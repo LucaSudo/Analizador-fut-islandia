@@ -1,0 +1,6 @@
+customtkinter
+groq
+edge-tts
+playwright
+playsound==1.2.2
+pyinstallergit

@@ -1,0 +1,13 @@
+__pycache__/
+dist/
+build/
+analisis_final.mp3
+test_voz.wav
+debug_sofascore.txt
+api_responses.json
+ronda7.json
+stats_partido.json
+sofascore_raw.txt
+kokoro-v1.0.onnx
+voices-v1.0.bin
+Analizador Futbol.spec
