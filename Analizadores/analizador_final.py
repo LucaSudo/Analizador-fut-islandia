@@ -1,12 +1,15 @@
+from dotenv import load_dotenv
 import os
+
+load_dotenv()
 from playwright.sync_api import sync_playwright
 import json
 import asyncio
 import edge_tts
 from groq import Groq
 
-API_KEY_GROQ = "os.getenv("GROQ_API_KEY")"
-LIGA_ID = 188
+API_KEY_GROQ = os.getenv("GROQ_API_KEY")
+LIGA_ID = os.getenv("LIGA_ID")
 TEMPORADA_ID = 89094
 RONDAS_TOTALES = 7  # actualizar según avance la liga
 

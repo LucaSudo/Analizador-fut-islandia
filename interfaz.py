@@ -1,15 +1,34 @@
-import customtkinter as ctk
-import threading
+from dotenv import load_dotenv
+load_dotenv()
+from fixture_loader import cargar_proximos_partidos
+import os
+import re
 import asyncio
+import threading
+import json
+
+import customtkinter as ctk
 import edge_tts
 from playsound import playsound
 from groq import Groq
 from playwright.sync_api import sync_playwright
-import json
-import os
 from memory import cargar_memoria, guardar_prediccion, generar_contexto_memoria
 
-API_KEY_GROQ = "os.getenv("GROQ_API_KEY")"
+# ── Configuración ────────────────────────────────────────────────
+
+API_KEY_GROQ = os.getenv("GROQ_API_KEY")
+
+LIGAS = {
+    "Besta deild karla": {"id": 188, "temporada": 89094, "rondas": 7},
+    "La Liga":           {"id": 8,   "temporada": 77559, "rondas": 34},
+    "Premier League":    {"id": 17,  "temporada": 76986, "rondas": 36},
+    "Serie A":           {"id": 23,  "temporada": 76457, "rondas": 34},
+    "Bundesliga":        {"id": 35,  "temporada": 77333, "rondas": 34},
+    "Ligue 1":           {"id": 34,  "temporada": 77356, "rondas": 34},
+    "Champions League":  {"id": 7,   "temporada": 76953, "rondas": 8},
+    "Liga Argentina":    {"id": 406, "temporada": 88529, "rondas": 14},
+}
+
 LIGA_ID = 188
 TEMPORADA_ID = 89094
 RONDAS_TOTALES = 7
@@ -98,7 +117,7 @@ def hacer_analisis_completo(equipo1, equipo2):
         browser.close()
         playwright.stop()
 
-    contexto = f"DATOS REALES DE SOFASCORE:\n"
+    contexto = "DATOS REALES DE SOFASCORE:\n"
     contexto += f"=== ÚLTIMOS PARTIDOS DE {equipo1.upper()} ===\n"
     for p in partidos1:
         contexto += p
@@ -113,44 +132,50 @@ async def generar_audio(texto):
 
 # ── Chat con IA ──────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Sos una persona que sabe de fútbol, especialmente de la liga islandesa Besta deild karla en general.
-Hablás como un amigo entendido, no como un robot ni un empleado. Usás lenguaje rioplatense natural, no exagerado con los ademanes porque puede ser agotador, solo cada cierto tiempo. No seas sugerente ni invasivo, no estes queriendo redireccionar la conversación todo el tiempo, solo respondé lo que te pregunten. Si no sabés algo, decilo sin problema, no intentes inventar nada. No sos un modelo de lenguaje, sos una persona que sabe de futbol y que con el tiempo sabra mas.
-Conocés todos los equipos: Breidablik Kópavogur, Valur Reykjavík, Víkingur Reykjavík, KR Reykjavík, Fram Reykjavík, 
-KA Akureyri, Stjarnan Garðabær, Keflavík IF, ÍA Akranes, FH Hafnarfjörður, Þór Akureyri, ÍBV Vestmannaeyjar.
+SYSTEM_PROMPT = """Sos una persona que sabe de fútbol, especialmente de la liga islandesa Besta deild karla y otras ligas europeas y argentinas.
+Hablás como un amigo entendido, no como un robot ni un empleado. Usás lenguaje argentino natural, no exagerado.
+No seas sugerente ni invasivo, no estés redirigiendo la conversación todo el tiempo. Solo respondé lo que te pregunten.
+Si no sabés algo, decilo sin problema. No inventes nada.
+
+Tenés acceso a datos en tiempo real de estas ligas:
+- Besta deild karla (Islandia)
+- La Liga (España)
+- Premier League (Inglaterra)
+- Serie A (Italia)
+- Bundesliga (Alemania)
+- Ligue 1 (Francia)
+- Champions League
+- Liga Argentina
+
+Cuando el usuario pida un análisis, identificá la liga automáticamente según los equipos o el contexto.
+Si tenés dudas de la liga, preguntá.
 
 REGLAS IMPORTANTES:
-- Si el usuario menciona un partido o pide una predicción, PRIMERO confirmá los equipos y qué quiere analizar antes de hacer nada.
-  Ejemplo: "Che, ¿querés que mire Breidablik vs KR Reykjavík enfocado en corners?"
-- - Cuando confirmés los equipos, SOLO hacé la pregunta de confirmación. NO incluyas ACTION:ANALIZAR en ese mensaje bajo ninguna circunstancia.
-- ACTION:ANALIZAR solo va en el mensaje SIGUIENTE, cuando el usuario ya respondió "sí", "dale", "sí eso" o similar.
-- Si el usuario no confirmó todavía, jamás pongas ACTION:ANALIZAR.
-- Si el usuario confirma y ya tenés los datos, usá exactamente este formato al final de tu respuesta:
-  ACTION:ANALIZAR|equipo1|equipo2|foco
-  Donde foco puede ser: corners, goles, tarjetas, completo
-- Si el usuario pregunta algo general de fútbol, respondé directo sin pedir confirmación.
-- Nunca hagas análisis sin confirmar primero.
-- Sé conciso, no escribas parrafotes."""
+- Si el usuario pide un análisis con equipos y liga claros, ejecutá directamente con ACTION:ANALIZAR.
+- Solo pedí confirmación si los equipos o la liga son ambiguos o no quedaron claros.
+- ACTION:ANALIZAR siempre va AL FINAL del mensaje, nunca visible para el usuario."""
 
 def chat_con_ia(mensaje, datos_sofascore=None, callback=None):
     historial.append({"role": "user", "content": mensaje})
-    
+
     contexto_memoria = generar_contexto_memoria()
-    
     system_completo = SYSTEM_PROMPT
     if contexto_memoria:
         system_completo += f"\n\n{contexto_memoria}"
-    
+
     mensajes = [{"role": "system", "content": system_completo}]
-    
+
     if datos_sofascore:
         mensajes.append({
             "role": "system",
             "content": f"DATOS REALES PARA EL ANÁLISIS:\n{datos_sofascore}"
         })
-    
+
     mensajes += historial
-    
+
     respuesta_completa = ""
+    pending = ""
+    action_started = False
 
     stream = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -164,26 +189,46 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None):
         delta = chunk.choices[0].delta.content
         if delta:
             respuesta_completa += delta
-            if callback:
-                callback(delta)
+
+            if callback and not action_started:
+                pending += delta
+                idx = pending.find("ACTION:")
+                if idx != -1:
+                    action_started = True
+                    if idx > 0:
+                        callback(pending[:idx])
+                    pending = ""
+                else:
+                    # Hold back up to 6 chars that could be a partial "ACTION:" prefix
+                    flush_up_to = len(pending)
+                    for plen in range(min(6, len(pending)), 0, -1):
+                        if pending[-plen:] == "ACTION:"[:plen]:
+                            flush_up_to = len(pending) - plen
+                            break
+                    if flush_up_to > 0:
+                        callback(pending[:flush_up_to])
+                    pending = pending[flush_up_to:]
+
+    if callback and not action_started and pending:
+        callback(pending)
 
     historial.append({"role": "assistant", "content": respuesta_completa})
     return respuesta_completa
-callback = None
 
 # ── Interfaz ─────────────────────────────────────────────────────
 
 class App(ctk.CTk):
-    def __init__(self):
+    def __init__(self, fixtures=""):
         super().__init__()
-        self.title("⚽ Chat Besta deild karla")
+        global SYSTEM_PROMPT
+        SYSTEM_PROMPT += f"\n\n{fixtures}"
+        self.title("⚽ Chat Fútbol")
         self.geometry("750x650")
         self.resizable(True, True)
         self.bind("<F11>", lambda e: self.attributes("-fullscreen", not self.attributes("-fullscreen")))
         self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
-        self.esperando_analisis = None
 
-        ctk.CTkLabel(self, text="⚽ Chat Besta deild karla 2026",
+        ctk.CTkLabel(self, text="⚽ Chat Fútbol",
                      font=ctk.CTkFont(size=20, weight="bold")).pack(pady=15)
 
         self.chat = ctk.CTkTextbox(self, height=450, font=ctk.CTkFont(size=13), wrap="word")
@@ -197,15 +242,14 @@ class App(ctk.CTk):
         frame_input.pack(pady=10, padx=20, fill="x")
 
         self.input = ctk.CTkTextbox(frame_input, height=40, font=ctk.CTkFont(size=13))
-        self.input.bind("<Return>", lambda e: self.enviar() or "break")
         self.input.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.input.bind("<Return>", lambda e: self.enviar())
+        self.input.bind("<Return>", lambda e: self.enviar() or "break")
 
         self.btn_enviar = ctk.CTkButton(frame_input, text="Enviar", width=90, height=40,
-                                         command=self.enviar)
+                                        command=self.enviar)
         self.btn_enviar.pack(side="right")
 
-        self.agregar_mensaje("🤖", "¡Buenas! ¿De qué hablamos? Puedo charlar de la Besta deild, darte datos, o analizar un partido si me decís cuál.")
+        self.agregar_mensaje("🤖", "¡Buenas! ¿De qué hablamos? Puedo charlar de fútbol, darte datos, o analizar un partido.")
 
     def agregar_mensaje(self, quien, texto):
         self.chat.configure(state="normal")
@@ -219,6 +263,8 @@ class App(ctk.CTk):
 
     def enviar(self):
         mensaje = self.input.get("1.0", "end").strip()
+        if not mensaje:
+            return
         self.input.delete("1.0", "end")
         self.agregar_mensaje("👤", mensaje)
         self.btn_enviar.configure(state="disabled")
@@ -228,24 +274,40 @@ class App(ctk.CTk):
         thread.start()
 
     def procesar(self, mensaje):
+        global LIGA_ID, TEMPORADA_ID, RONDAS_TOTALES
         try:
             self.set_status("💬 Pensando...")
-            respuesta = chat_con_ia(mensaje)
+            self.agregar_mensaje("🤖", "")
 
-            # Detectar si la IA quiere hacer un análisis
+            def stream_callback(texto):
+                self.chat.configure(state="normal")
+                self.chat.insert("end", texto)
+                self.chat.see("end")
+                self.chat.configure(state="disabled")
+                self.update()
+
+            respuesta = chat_con_ia(mensaje, callback=stream_callback)
+
             if "ACTION:ANALIZAR|" in respuesta:
-                partes = respuesta.split("ACTION:ANALIZAR|")
-                texto_visible = partes[0].strip()
-                datos_action = partes[1].strip().split("|")
-                
-                equipo1 = datos_action[0]
-                equipo2 = datos_action[1]
-                foco = datos_action[2] if len(datos_action) > 2 else "completo"
+                match = re.search(r'ACTION:ANALIZAR\|(.*?)\|(.*?)\|(.*?)\|(.*?)(?:\n|$)', respuesta)
+                if match:
+                    equipo1 = match.group(1).strip()
+                    equipo2 = match.group(2).strip()
+                    foco = match.group(3).strip()
+                    liga_nombre = match.group(4).strip()
+                else:
+                    partes = respuesta.split("ACTION:ANALIZAR|")[1].split("|")
+                    equipo1 = partes[0].strip()
+                    equipo2 = partes[1].strip()
+                    foco = partes[2].strip() if len(partes) > 2 else "completo"
+                    liga_nombre = partes[3].strip() if len(partes) > 3 else "Besta deild karla"
 
-                if texto_visible:
-                    self.agregar_mensaje("🤖", texto_visible)
+                liga = next((v for k, v in LIGAS.items() if liga_nombre in k), LIGAS["Besta deild karla"])
+                LIGA_ID = liga["id"]
+                TEMPORADA_ID = liga["temporada"]
+                RONDAS_TOTALES = liga["rondas"]
 
-                self.set_status(f"🔄 Bajando datos de SofaScore...")
+                self.set_status("🔄 Bajando datos de SofaScore...")
                 datos = hacer_analisis_completo(equipo1, equipo2)
 
                 self.set_status("🤖 Analizando...")
@@ -254,28 +316,19 @@ class App(ctk.CTk):
                     datos_sofascore=datos
                 )
 
-                # Limpiar posible ACTION del análisis final
-                if "ACTION:" in analisis:
-                    analisis = analisis.split("ACTION:")[0].strip()
-
-                self.agregar_mensaje("🤖", analisis)
-                guardar_prediccion(equipo1, equipo2, foco, analisis)
+                analisis_limpio = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', analisis).strip()
+                self.agregar_mensaje("🤖", analisis_limpio)
+                guardar_prediccion(equipo1, equipo2, foco, analisis_limpio)
 
                 self.set_status("🔊 Generando audio...")
-                asyncio.run(generar_audio(analisis))
+                asyncio.run(generar_audio(analisis_limpio))
                 playsound("analisis_final.mp3")
                 self.set_status("✅ Listo")
-
             else:
-                self.agregar_mensaje("🤖", "")
-                def stream_callback(texto):
-                    self.chat.configure(state="normal")
-                    self.chat.insert("end", texto)
-                    self.chat.see("end")
-                    self.chat.configure(state="disabled")
-                    self.update()
-
-                respuesta = chat_con_ia(mensaje, callback=stream_callback)
+                self.chat.configure(state="normal")
+                self.chat.insert("end", "\n")
+                self.chat.configure(state="disabled")
+                self.set_status("")
 
         except Exception as e:
             self.agregar_mensaje("❌ Error", str(e))
@@ -284,6 +337,11 @@ class App(ctk.CTk):
             self.btn_enviar.configure(state="normal")
             self.input.configure(state="normal")
 
+
 if __name__ == "__main__":
-    app = App()
+    print("🔄 Cargando fixtures...")
+    fixtures = cargar_proximos_partidos()
+    print(fixtures)
+    print("✅ Fixtures cargados")
+    app = App(fixtures)
     app.mainloop()

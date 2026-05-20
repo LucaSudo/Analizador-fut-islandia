@@ -11,3 +11,4 @@ sofascore_raw.txt
 kokoro-v1.0.onnx
 voices-v1.0.bin
 Analizador Futbol.spec
+.env
