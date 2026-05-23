@@ -363,7 +363,39 @@ Tenés acceso a datos en tiempo real de:
   - Copa Sudamericana (Sudamérica)
   - Saudi Pro League (Arabia Saudita)
 """
-def chat_con_ia(mensaje, datos_sofascore=None, callback=None):
+# ── Detección Python de pedidos de predicción ────────────────────
+# No confiar solo en el LLM para decidir cuándo usar ACTION:ANALIZAR.
+# Esta función detecta la intención antes de llamar al modelo.
+_PRED_KEYWORDS = [
+    "cuantos", "cuántos", "cuantas", "cuántas",
+    "habra", "habrá", "va a haber", "crees que",
+    "apostar", "apuesta",
+    "over ", "under ",
+    "quién gana", "quien gana",
+    "prediccion", "predicción", "pronostico", "pronóstico",
+    "analizá", "analiza el partido",
+]
+
+def _es_prediccion(msg: str) -> bool:
+    m = msg.lower()
+    return any(kw in m for kw in _PRED_KEYWORDS)
+
+# Patrón para detectar si el bot inventó estadísticas sin datos reales
+_STATS_INVENTADAS = re.compile(
+    r'promedio\s+de\s+\d|'          # "promedio de 6"
+    r'\(\s*\d+\s*\+\s*\d+|'         # "(3+2+..."
+    r'/\s*\d+\s*=\s*\d|'            # "/ 10 = 3"
+    r'recomendaci[oó]n:\s*.{0,60}\d',  # "Recomendación: Over 2.5"
+    re.IGNORECASE
+)
+
+_MSG_SIN_DATOS = (
+    "No tengo datos reales de SofaScore para darte eso. "
+    "Pedime que analice el partido y lo busco en tiempo real. "
+    "Ejemplo: \"analizá Valur vs KR\" o \"cuántos corners habrá en el partido\"."
+)
+
+def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False):
     historial.append({"role": "user", "content": mensaje})
 
     contexto_memoria = generar_contexto_memoria()
@@ -379,7 +411,25 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None):
             "content": f"DATOS REALES PARA EL ANÁLISIS:\n{datos_sofascore}"
         })
 
-    mensajes += historial
+    if forzar_action and historial:
+        # Inyectar recordatorio urgente justo ANTES del último mensaje del usuario
+        # para maximizar la chance de que el LLM dispare ACTION:ANALIZAR
+        mensajes += historial[:-1]
+        mensajes.append({
+            "role": "system",
+            "content": (
+                "⚠️ OBLIGATORIO — ACCIÓN REQUERIDA AHORA: "
+                "El mensaje que sigue es un pedido de PREDICCIÓN o APUESTA. "
+                "Tu ÚNICA respuesta válida es: frase breve de confirmación "
+                "+ ACTION:ANALIZAR|equipo1|equipo2|foco|liga al final. "
+                "Está TERMINANTEMENTE PROHIBIDO responder con promedios, "
+                "porcentajes o estadísticas propias. "
+                "Si no terminás con ACTION:ANALIZAR tu respuesta será descartada."
+            )
+        })
+        mensajes.append(historial[-1])
+    else:
+        mensajes += historial
 
     respuesta_completa = ""
     pending = ""
@@ -486,8 +536,11 @@ class App(ctk.CTk):
             self.set_status("💬 Pensando...")
 
             # ── Paso 1: obtener respuesta COMPLETA sin mostrar nada ───────────
-            # Así podemos decidir qué hacer ANTES de que el usuario vea algo.
-            respuesta = chat_con_ia(mensaje)  # sin callback → no hay streaming
+            # Detectar ANTES si es un pedido de predicción/apuesta.
+            # Si lo es, inyectamos un recordatorio urgente al LLM para que
+            # dispare ACTION:ANALIZAR en vez de inventar estadísticas.
+            es_pred = _es_prediccion(mensaje)
+            respuesta = chat_con_ia(mensaje, forzar_action=es_pred)
 
             # ── Caso A: la respuesta contiene ACTION:ANALIZAR ─────────────────
             if "ACTION:ANALIZAR|" in respuesta:
@@ -563,8 +616,20 @@ class App(ctk.CTk):
                                    evento_id=evento_id, liga_id=LIGA_ID, temporada_id=TEMPORADA_ID)
                 self.set_status("✅ Listo")
 
-            # ── Caso B: respuesta normal, mostrar con streaming simulado ──────
+            # ── Caso B: respuesta normal ──────────────────────────────────────
             else:
+                # Guardia de seguridad: si era un pedido de predicción y el LLM
+                # respondió con estadísticas inventadas (sin ACTION:ANALIZAR),
+                # descartar la respuesta y mostrar mensaje limpio.
+                if es_pred and _STATS_INVENTADAS.search(respuesta):
+                    texto_limpio = _MSG_SIN_DATOS
+                    # Corregir también el historial para no "recordar" stats falsas
+                    if historial and historial[-1]["role"] == "assistant":
+                        historial[-1]["content"] = texto_limpio
+                    self.agregar_mensaje("🤖", texto_limpio)
+                    self.set_status("")
+                    return
+
                 self.chat.configure(state="normal")
                 self.chat.insert("end", "\n🤖:\n")
                 self.chat.configure(state="disabled")
