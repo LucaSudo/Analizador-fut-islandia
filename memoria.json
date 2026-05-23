@@ -1,20 +1,38 @@
 {
   "predicciones": [
     {
-      "fecha": "2026-05-19 18:31",
-      "equipo1": "Breidablik",
+      "fecha": "2026-05-22 14:06",
+      "equipo1": "Breidablik Kópavogur",
       "equipo2": "KR Reykjavík",
       "foco": "completo",
-      "prediccion": "Breidablik y KR Reykjavík tienen un historial interesante. Breidablik tiene una posesión de balón alta en sus partidos, promediando un 58-63% de posesión. KR Reykjavík, por otro lado, también tiene una buena posesión, pero un poco más baja, alrededor del 56-60%.\n\nEn cuanto a tiros, Breidablik promedia 19-28 tiros por partido, mientras que KR Reykjavík promedia 11-23 tiros. En terms de corners, Breidablik tiene una ventaja, promediando 10-13 corners por partido, mientras que KR Reykjavík promedia 4-11 corners.\n\nEn la tabla de estadísticas, KR Reykjavík parece tener una ventaja en cuanto a goles anotados, pero Breidablik tiene una defensa más sólida, con menos goles recibidos. La cantidad de tarjetas amarillas y rojas también es similar entre ambos equipos.\n\nEn resumen, el partido entre Breidablik y KR Reykjavík podría ser muy disputado, con ambos equipos buscando dominar la posesión y crear oportunidades de gol. La ventaja de Breidablik en corners y su defensa sólida podrían ser clave en el partido, pero KR Reykjavík tiene la capacidad de anotar goles y podría aprovechar cualquier error de su oponente.",
+      "prediccion": "Basándome en los datos de SofaScore, veo que Breidablik Kópavogur promedia 2 goles a favor por partido, mientras que KR Reykjavík promedia 3 goles a favor por partido, lo que sugiere un partido con varias oportunidades de gol. El promedio de goles totales por partido de ambos equipos es (3 + 3 + 2 + 1 + 2 + 4) / 6 = 2.5, lo que apunta a un resultado sobre 2.5 goles. Ambos equipos anotaron en 2 de 3 partidos. El promedio de corners de Breidablik es (13 + 6 + 6) / 3 = 8.33, mientras que el de KR Reykjavík es (4 + 11 + 11) / 3 = 8.67, sumando un total de 17. El promedio de tarjetas de Breidablik es (1 + 2 + 3) / 3 = 2, mientras que el de KR Reykjavík es (2 + 2 + 2) / 3 = 2. Recomendación: Over 2.5 goles ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426835,
+      "liga_id": 188,
+      "temporada_id": 89094,
       "resultado_real": null,
       "acerto": null
     },
     {
-      "fecha": "2026-05-19 22:33",
-      "equipo1": "Real Madrid",
-      "equipo2": "Athletic de Bilbao",
-      "foco": "goles",
-      "prediccion": "El Real Madrid ha promediado 1,5 goles por partido en sus últimos encuentros, mientras que el Athletic de Bilbao ha recibido un promedio de 1,2 goles por partido. Considerando la posesión de balón y las oportunidades de gol, creo que el Real Madrid puede anotar alrededor de 2 goles, mientras que el Athletic de Bilbao puede anotar alrededor de 1 gol.",
+      "fecha": "2026-05-22 14:08",
+      "equipo1": "Breidablik Kópavogur",
+      "equipo2": "KR Reykjavík",
+      "foco": "corners",
+      "prediccion": "Basándome en los datos de SofaScore, veo que el Breidablik Kópavogur promedia (13 + 13 + 6) / 3 = 10.67 corners por partido, mientras que el KR Reykjavík promedia (4 + 11 + 11) / 3 = 8.67 corners por partido. Sumando estos valores, el total estimado de corners es 10.67 + 8.67 = 19.34 corners. Para el Over/Under de corners, considerando el promedio total, podríamos esperar más de 10 corners en el partido. Recomendación: Over 10 corners ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426835,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-22 14:14",
+      "equipo1": "Breidablik Kópavogur",
+      "equipo2": "KR Reykjavík",
+      "foco": "1ST_Corner kicks",
+      "prediccion": "Basándome en los datos de SofaScore, el Breidablik Kópavogur promedia (13 + 6 + 4) / 3 = 7.67 corners por partido en el primer tiempo no está disponible, pero puedo calcular el total, y el KR Reykjavík promedia (11 + 11 + 4) / 3 = 8.67 corners por partido en total, también sin datos de primer tiempo. Sumando los promedios, obtenemos 7.67 + 8.67 = 16.34 corners por partido en total, lo que sugiere un partido con muchos corners. Considerando esto, la apuesta más probable sería sobre el total de corners en el partido. Recomendación: Over 10 corners ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426835,
+      "liga_id": 188,
+      "temporada_id": 89094,
       "resultado_real": null,
       "acerto": null
     }
