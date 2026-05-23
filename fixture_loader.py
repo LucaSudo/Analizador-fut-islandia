@@ -68,32 +68,25 @@ def cargar_proximos_partidos():
 
         for nombre_liga, datos in LIGAS.items():
             try:
-                ronda_actual = datos["rondas"]
+                # Usar el endpoint /events/next/0 en vez de escanear rondas.
+                # Devuelve los próximos partidos ordenados por fecha sin importar
+                # en qué ronda estén. Elimina completamente el bug de ronda_actual.
+                data = fetch_api(
+                    page,
+                    f"https://www.sofascore.com/api/v1/unique-tournament/{datos['id']}"
+                    f"/season/{datos['temporada']}/events/next/0"
+                )
+                todos = data.get("events", [])
 
-                # Buscar desde 1 ronda atrás hasta 3 adelante para no perder
-                # partidos pendientes de la ronda anterior (bug de ronda_actual adelantada)
-                todos_proximos = []
-                ronda_inicio = max(1, ronda_actual - 1)
-                for r in range(ronda_inicio, ronda_actual + 4):
-                    data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{datos['id']}/season/{datos['temporada']}/events/round/{r}")
-                    todos = data.get("events", [])
-                    proximos = [
-                        e for e in todos
-                        if e.get("status", {}).get("type") == "inprogress"
-                        or (
-                            e.get("status", {}).get("type") == "notstarted"
-                            and e.get("startTimestamp", 0) > ahora
-                        )
-                    ]
-                    todos_proximos.extend(proximos)
-
-                # Ordenar por fecha y deduplicar por id
-                vistos = set()
-                eventos = []
-                for e in sorted(todos_proximos, key=lambda x: x.get("startTimestamp", 0)):
-                    if e["id"] not in vistos:
-                        vistos.add(e["id"])
-                        eventos.append(e)
+                # Filtrar sólo los que aún no empezaron o están en curso
+                eventos = [
+                    e for e in todos
+                    if e.get("status", {}).get("type") == "inprogress"
+                    or (
+                        e.get("status", {}).get("type") == "notstarted"
+                        and e.get("startTimestamp", 0) > ahora
+                    )
+                ]
 
                 if eventos:
                     contexto += f"\n{nombre_liga}:\n"
@@ -101,7 +94,10 @@ def cargar_proximos_partidos():
                         home = e["homeTeam"]["name"]
                         away = e["awayTeam"]["name"]
                         fecha = e.get("startTimestamp", "")
-                        fecha_str = datetime.fromtimestamp(fecha).strftime("%d/%m/%Y %H:%M") if fecha else "por confirmar"
+                        fecha_str = (
+                            datetime.fromtimestamp(fecha).strftime("%d/%m/%Y %H:%M")
+                            if fecha else "por confirmar"
+                        )
                         contexto += f"  - {home} vs {away} ({fecha_str})\n"
             except:
                 pass
