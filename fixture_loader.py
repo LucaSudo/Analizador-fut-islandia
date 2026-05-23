@@ -68,35 +68,43 @@ def cargar_proximos_partidos():
 
         for nombre_liga, datos in LIGAS.items():
             try:
-                # Usar el endpoint /events/next/0 en vez de escanear rondas.
-                # Devuelve los próximos partidos ordenados por fecha sin importar
-                # en qué ronda estén. Elimina completamente el bug de ronda_actual.
-                data = fetch_api(
-                    page,
-                    f"https://www.sofascore.com/api/v1/unique-tournament/{datos['id']}"
-                    f"/season/{datos['temporada']}/events/next/0"
-                )
-                todos = data.get("events", [])
+                # SofaScore tiene dos endpoints complementarios:
+                #   last/0  → última ronda (puede tener partidos AÚN NO JUGADOS
+                #              si la ronda está en curso o parcialmente jugada)
+                #   next/0  → próxima ronda completa
+                # Es necesario consultar AMBOS para no perder partidos de la
+                # ronda actual que todavía no se jugaron (caso Valur vs KR).
+                candidatos = []
+                base = (f"https://www.sofascore.com/api/v1/unique-tournament"
+                        f"/{datos['id']}/season/{datos['temporada']}/events")
+                for endpoint in ["last/0", "next/0"]:
+                    try:
+                        resp = fetch_api(page, f"{base}/{endpoint}")
+                        candidatos.extend(resp.get("events", []))
+                    except:
+                        pass
 
-                # Filtrar sólo los que aún no empezaron o están en curso
-                eventos = [
-                    e for e in todos
-                    if e.get("status", {}).get("type") == "inprogress"
-                    or (
-                        e.get("status", {}).get("type") == "notstarted"
-                        and e.get("startTimestamp", 0) > ahora
-                    )
-                ]
+                # Filtrar: solo futuros o en curso, deduplicar por id, ordenar
+                vistos = set()
+                eventos = []
+                for e in sorted(candidatos, key=lambda x: x.get("startTimestamp", 0)):
+                    eid = e["id"]
+                    tipo = e.get("status", {}).get("type", "")
+                    ts   = e.get("startTimestamp", 0)
+                    es_futuro = tipo == "inprogress" or (tipo == "notstarted" and ts > ahora)
+                    if es_futuro and eid not in vistos:
+                        vistos.add(eid)
+                        eventos.append(e)
 
                 if eventos:
                     contexto += f"\n{nombre_liga}:\n"
                     for e in eventos:
                         home = e["homeTeam"]["name"]
                         away = e["awayTeam"]["name"]
-                        fecha = e.get("startTimestamp", "")
+                        ts   = e.get("startTimestamp", "")
                         fecha_str = (
-                            datetime.fromtimestamp(fecha).strftime("%d/%m/%Y %H:%M")
-                            if fecha else "por confirmar"
+                            datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M")
+                            if ts else "por confirmar"
                         )
                         contexto += f"  - {home} vs {away} ({fecha_str})\n"
             except:
