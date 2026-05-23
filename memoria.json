@@ -296,6 +296,18 @@
         }
       },
       "acerto": null
+    },
+    {
+      "fecha": "2026-05-23 15:08",
+      "equipo1": "Valur",
+      "equipo2": "KR Reykjavík",
+      "foco": "completo",
+      "prediccion": "Basándome en los datos de SofaScore, el promedio de goles totales por partido es (3+2+3+2+6+3+2+4+1+4) / 10 = 3 goles por partido. El promedio de corners por partido es (8+4+13+11+4+11+3+11+1+4) / 10 = 7 corners por partido. El promedio de tarjetas amarillas por partido es (1+0+1+4+2+2+3+2+4+1) / 10 = 2 tarjetas amarillas por partido. Recomendación: Over 2.5 goles. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": null,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
     }
   ],
   "notas_equipos": {},
