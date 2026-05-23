@@ -68,12 +68,13 @@ def cargar_proximos_partidos():
 
         for nombre_liga, datos in LIGAS.items():
             try:
-                # La ronda actual ya viene calculada desde obtener_temporadas_actuales
                 ronda_actual = datos["rondas"]
 
-                eventos = []
-                # Buscar en ronda actual y siguiente (hacia adelante, no hacia atrás)
-                for r in [ronda_actual, ronda_actual + 1]:
+                # Buscar desde 1 ronda atrás hasta 3 adelante para no perder
+                # partidos pendientes de la ronda anterior (bug de ronda_actual adelantada)
+                todos_proximos = []
+                ronda_inicio = max(1, ronda_actual - 1)
+                for r in range(ronda_inicio, ronda_actual + 4):
                     data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{datos['id']}/season/{datos['temporada']}/events/round/{r}")
                     todos = data.get("events", [])
                     proximos = [
@@ -84,9 +85,15 @@ def cargar_proximos_partidos():
                             and e.get("startTimestamp", 0) > ahora
                         )
                     ]
-                    if proximos:
-                        eventos = proximos
-                        break
+                    todos_proximos.extend(proximos)
+
+                # Ordenar por fecha y deduplicar por id
+                vistos = set()
+                eventos = []
+                for e in sorted(todos_proximos, key=lambda x: x.get("startTimestamp", 0)):
+                    if e["id"] not in vistos:
+                        vistos.add(e["id"])
+                        eventos.append(e)
 
                 if eventos:
                     contexto += f"\n{nombre_liga}:\n"
