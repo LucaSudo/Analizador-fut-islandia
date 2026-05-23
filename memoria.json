@@ -9,8 +9,95 @@
       "evento_id": 15426835,
       "liga_id": 188,
       "temporada_id": 89094,
-      "resultado_real": null,
-      "acerto": null
+      "resultado_real": {
+        "marcador": "Breidablik Kópavogur 6 - 3 KR Reykjavík",
+        "goles_home": 6,
+        "goles_away": 3,
+        "ganador": "home",
+        "equipo_home": "Breidablik Kópavogur",
+        "equipo_away": "KR Reykjavík",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "15",
+              "away": "18"
+            },
+            "Corner kicks": {
+              "home": "5",
+              "away": "9"
+            },
+            "Fouls": {
+              "home": "15",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "2",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "9",
+              "away": "6"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "37%",
+              "away": "63%"
+            },
+            "Total shots": {
+              "home": "8",
+              "away": "8"
+            },
+            "Corner kicks": {
+              "home": "1",
+              "away": "2"
+            },
+            "Fouls": {
+              "home": "6",
+              "away": "2"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "6",
+              "away": "3"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "7",
+              "away": "10"
+            },
+            "Corner kicks": {
+              "home": "4",
+              "away": "7"
+            },
+            "Fouls": {
+              "home": "9",
+              "away": "4"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "3",
+              "away": "3"
+            }
+          }
+        }
+      },
+      "acerto": true
     },
     {
       "fecha": "2026-05-22 14:08",
@@ -21,8 +108,95 @@
       "evento_id": 15426835,
       "liga_id": 188,
       "temporada_id": 89094,
-      "resultado_real": null,
-      "acerto": null
+      "resultado_real": {
+        "marcador": "Breidablik Kópavogur 6 - 3 KR Reykjavík",
+        "goles_home": 6,
+        "goles_away": 3,
+        "ganador": "home",
+        "equipo_home": "Breidablik Kópavogur",
+        "equipo_away": "KR Reykjavík",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "15",
+              "away": "18"
+            },
+            "Corner kicks": {
+              "home": "5",
+              "away": "9"
+            },
+            "Fouls": {
+              "home": "15",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "2",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "9",
+              "away": "6"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "37%",
+              "away": "63%"
+            },
+            "Total shots": {
+              "home": "8",
+              "away": "8"
+            },
+            "Corner kicks": {
+              "home": "1",
+              "away": "2"
+            },
+            "Fouls": {
+              "home": "6",
+              "away": "2"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "6",
+              "away": "3"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "7",
+              "away": "10"
+            },
+            "Corner kicks": {
+              "home": "4",
+              "away": "7"
+            },
+            "Fouls": {
+              "home": "9",
+              "away": "4"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "3",
+              "away": "3"
+            }
+          }
+        }
+      },
+      "acerto": true
     },
     {
       "fecha": "2026-05-22 14:14",
@@ -33,7 +207,94 @@
       "evento_id": 15426835,
       "liga_id": 188,
       "temporada_id": 89094,
-      "resultado_real": null,
+      "resultado_real": {
+        "marcador": "Breidablik Kópavogur 6 - 3 KR Reykjavík",
+        "goles_home": 6,
+        "goles_away": 3,
+        "ganador": "home",
+        "equipo_home": "Breidablik Kópavogur",
+        "equipo_away": "KR Reykjavík",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "15",
+              "away": "18"
+            },
+            "Corner kicks": {
+              "home": "5",
+              "away": "9"
+            },
+            "Fouls": {
+              "home": "15",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "2",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "9",
+              "away": "6"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "37%",
+              "away": "63%"
+            },
+            "Total shots": {
+              "home": "8",
+              "away": "8"
+            },
+            "Corner kicks": {
+              "home": "1",
+              "away": "2"
+            },
+            "Fouls": {
+              "home": "6",
+              "away": "2"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "6",
+              "away": "3"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "36%",
+              "away": "64%"
+            },
+            "Total shots": {
+              "home": "7",
+              "away": "10"
+            },
+            "Corner kicks": {
+              "home": "4",
+              "away": "7"
+            },
+            "Fouls": {
+              "home": "9",
+              "away": "4"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "3"
+            },
+            "Shots on target": {
+              "home": "3",
+              "away": "3"
+            }
+          }
+        }
+      },
       "acerto": null
     }
   ],
