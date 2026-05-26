@@ -49,23 +49,42 @@ def obtener_pagina():
     page.wait_for_timeout(3000)
     return playwright, browser, page
 
+MAX_DIAS_HISTORIAL = 60   # no usar partidos de más de 60 días de antigüedad
+
 def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=5):
-    """Retorna los últimos N partidos TERMINADOS del equipo (excluye en curso y futuros)."""
-    partidos = []
-    # Buscar en más rondas de las necesarias para asegurar N partidos terminados
-    for ronda in range(RONDAS_TOTALES + 1, max(0, RONDAS_TOTALES - ultimas_rondas - 4), -1):
+    """
+    Retorna los últimos N partidos TERMINADOS del equipo, ordenados de más
+    reciente a más viejo, descartando partidos de más de MAX_DIAS_HISTORIAL días.
+    Excluye partidos en curso y futuros (sus stats están incompletas).
+    """
+    ahora      = datetime.now().timestamp()
+    cutoff     = ahora - MAX_DIAS_HISTORIAL * 86400   # timestamp mínimo aceptable
+    partidos   = []
+
+    # Iterar desde la ronda más reciente hacia atrás para obtener los más recientes
+    for ronda in range(RONDAS_TOTALES + 1, max(0, RONDAS_TOTALES - ultimas_rondas - 6), -1):
         data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
         for evento in data.get("events", []):
-            home   = evento["homeTeam"]["name"]
-            away   = evento["awayTeam"]["name"]
             status = evento.get("status", {}).get("type", "")
-            # Solo partidos terminados — los en curso no tienen stats completas
+            start  = evento.get("startTimestamp", 0)
+
             if status != "finished":
                 continue
+            if start < cutoff:
+                # Partido demasiado antiguo — y como iteramos de reciente a viejo,
+                # los siguientes también serán viejos: podemos cortar.
+                continue
+
+            home = evento["homeTeam"]["name"]
+            away = evento["awayTeam"]["name"]
             if nombre_equipo.lower() in home.lower() or nombre_equipo.lower() in away.lower():
                 partidos.append(evento)
+
         if len(partidos) >= ultimas_rondas:
             break
+
+    # Ordenar por fecha descendente (más reciente primero) y tomar los N pedidos
+    partidos.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
     return partidos[:ultimas_rondas]
 
 def obtener_estadisticas(page, evento_id):
@@ -129,8 +148,12 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
         if gh is not None and ga is not None:
             goles.append(gh if es_local else ga)
 
+        fecha_str = (
+            datetime.fromtimestamp(e["startTimestamp"]).strftime("%d/%m/%Y")
+            if e.get("startTimestamp") else "?"
+        )
         refs.append(
-            f"R{ronda}: {home} {gh}-{ga} {away} "
+            f"{fecha_str} R{ronda}: {home} {gh}-{ga} {away} "
             f"({'local' if es_local else 'visitante'})"
         )
 
