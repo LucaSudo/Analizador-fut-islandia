@@ -378,17 +378,21 @@ NINGUNO de estos casos activa ACTION:ANALIZAR, aunque mencionen un partido, un e
 REGLA ABSOLUTA N°3 — CONFIRMACIÓN DE PARTIDO ANTES DE ANALIZAR
 ════════════════════════════════════════
 
-Antes de disparar ACTION:ANALIZAR, SIEMPRE tenés que tener claro de qué partido específico se habla. Para eso:
+Antes de disparar ACTION:ANALIZAR, necesitás tener CLARO de qué partido específico se habla.
 
-CASO A — El usuario menciona un equipo y ese equipo tiene UN SOLO partido próximo:
-→ Antes de analizar, confirmás: "Entiendo que hablás del partido contra [rival] el [fecha], ¿es correcto?"
+CASO A — El usuario YA es específico (nombró los dos equipos, dijo "de hoy" y hay un partido [HOY] del equipo, o el contexto no deja lugar a dudas):
+→ NO necesitás confirmar. Identificás el partido y disparás ACTION:ANALIZAR directamente.
+→ Ejemplo: "cuántos corners habrá en el partido de hoy del Valur" → el partido [HOY] es el de hoy → disparás directo.
+
+CASO B — El usuario menciona un equipo sin especificar cuál partido, y ese equipo tiene MÁS DE UN partido próximo en tu lista:
+→ Preguntás: "¿De qué partido hablás? [Equipo] tiene [partido1 con fecha] y [partido2 con fecha]."
+→ NO disparás ACTION:ANALIZAR hasta que el usuario especifique.
+
+CASO C — El usuario menciona un equipo sin especificar, y ese equipo tiene UN SOLO partido próximo:
+→ Confirmás brevemente: "Entiendo que hablás del partido contra [rival] el [fecha], ¿es correcto?"
 → Esperás confirmación. Recién ahí disparás ACTION:ANALIZAR.
 
-CASO B — El usuario menciona un equipo y ese equipo tiene MÁS DE UN partido próximo:
-→ Preguntás: "¿De qué partido hablás? Tiene [partido1] y [partido2]."
-→ Esperás que el usuario especifique. Recién ahí, si pide análisis, disparás ACTION:ANALIZAR.
-
-CASO C — El usuario confirma con "sí", "ese", "correcto" o similar:
+CASO D — El usuario confirma con "sí", "ese", "correcto" o similar:
 → Solo respondés con la información pendiente (fecha, hora, etc.).
 → NO disparás ACTION:ANALIZAR a menos que el usuario agregue explícitamente un pedido de análisis en ese mismo mensaje.
 
@@ -684,19 +688,27 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
 
     if forzar_action and historial:
         # Inyectar recordatorio urgente justo ANTES del último mensaje del usuario
-        # para maximizar la chance de que el LLM dispare ACTION:ANALIZAR
+        # para maximizar la chance de que el LLM dispare ACTION:ANALIZAR,
+        # PERO permitir pedir aclaración si el partido es ambiguo.
         mensajes += historial[:-1]
         mensajes.append({
             "role": "system",
             "content": (
-                "⚠️ ACCIÓN OBLIGATORIA: El usuario pide una PREDICCIÓN o ESTADÍSTICA FUTURA. "
-                "Tu respuesta DEBE terminar con:\n"
-                "ACTION:ANALIZAR|[equipo_local]|[equipo_visitante]|[foco]|[liga]\n"
-                "Focos válidos: corners, goles, tarjetas_amarillas, tarjetas_rojas, "
-                "remates, faltas, completo (y variantes _1h/_2h).\n"
-                "Escribí UNA sola frase breve antes (ej: 'Voy a buscar los datos.') "
-                "y luego la acción. PROHIBIDO responder sin ACTION:ANALIZAR. "
-                "PROHIBIDO inventar estadísticas o promedios."
+                "⚠️ ACCIÓN REQUERIDA — El usuario pide una PREDICCIÓN o ESTADÍSTICA. "
+                "Seguí EXACTAMENTE estas reglas:\n\n"
+                "CASO 1 — El partido es CLARO en el contexto:\n"
+                "  (el usuario nombró ambos equipos, O dijo 'de hoy'/'hoy' y hay un partido [HOY]\n"
+                "   para ese equipo en la lista de fixtures, O hay un único partido próximo)\n"
+                "  → Identificás ese partido. Escribís UNA frase corta y terminás con:\n"
+                "  ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n\n"
+                "CASO 2 — El partido es AMBIGUO:\n"
+                "  (el equipo tiene VARIOS partidos próximos y el usuario NO especificó cuál)\n"
+                "  → Preguntás: '¿De qué partido hablás? [Equipo] tiene [partido1 con fecha] y [partido2 con fecha].'\n"
+                "  NO emitas ACTION:ANALIZAR. Esperá la respuesta del usuario.\n\n"
+                "Focos válidos: corners, corners_1h, corners_2h, goles, tarjetas_amarillas, "
+                "tarjetas_rojas, remates, faltas, completo (y variantes _1h/_2h).\n"
+                "NUNCA inventés estadísticas ni promedios. "
+                "NUNCA emitas ACTION:ANALIZAR sin saber exactamente qué partido."
             )
         })
         mensajes.append(historial[-1])
@@ -899,7 +911,10 @@ REGLAS:
                 # NO disparó ACTION:ANALIZAR, descartar la respuesta SALVO que
                 # sea una pregunta de aclaración legítima (tiene "?" y es corta).
                 if es_pred:
-                    es_aclaracion = "?" in respuesta and len(respuesta.strip()) < 250
+                    # Permitir respuestas con "?" que sean preguntas de aclaración
+                    # (ej: "¿De qué partido hablás? Valur tiene KR [HOY] y Víkingur el 31/05.")
+                    # Aumentamos el límite a 400 chars para cubrir listas de partidos con fechas.
+                    es_aclaracion = "?" in respuesta and len(respuesta.strip()) < 400
                     if not es_aclaracion:
                         texto_limpio = _MSG_SIN_DATOS
                         # Corregir también el historial para no "recordar" stats falsas
