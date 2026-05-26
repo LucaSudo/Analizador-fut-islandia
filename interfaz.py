@@ -576,104 +576,93 @@ _MSG_SIN_DATOS = (
 # ── Instrucciones de análisis por foco ───────────────────────────
 # Cada valor describe EXACTAMENTE qué debe calcular el LLM.
 # El LLM NO debe salirse de estas instrucciones.
+# NOTA: Los datos ya llegan pre-calculados en formato:
+#   "ALL_Corner kicks: [6, 4, 1, 4, 3] -> promedio = 3.60"
+# Y la sección LÍNEAS PRE-CALCULADAS POR PYTHON tiene el total y la línea lista.
+# Los prompts solo necesitan decirle al LLM QUÉ stat mirar y cómo presentarlo.
 _FOCO_PROMPT = {
     "completo": (
-        "Hacé un análisis completo: 1) resultado más probable comparando victorias, "
-        "posesión y remates; 2) Over/Under goles (promedio total); 3) corners esperados; "
-        "4) tarjetas amarillas esperadas; 5) faltas esperadas. "
-        "Para cada stat mostrá la operación: (v1+v2+...)/n = X. "
-        "Terminá con 'Recomendación: [apuesta concreta]'."
+        "Hacé un resumen con las stats principales: "
+        "mencioná el promedio de goles de cada equipo (y si suelen anotar ambos), "
+        "el total de corners esperado, tarjetas amarillas esperadas y faltas. "
+        "Para cada stat leé el 'promedio' de la sección ESTADÍSTICAS y sumá los dos. "
+        "Usá las líneas de LÍNEAS PRE-CALCULADAS para las recomendaciones."
     ),
     "goles": (
-        "Analizá SOLO los goles. "
-        "Paso 1 — promedio de goles del equipo1 en sus últimos partidos: (g1+g2+...)/n = X. "
-        "Paso 2 — promedio de goles del equipo2 en sus últimos partidos: (g1+g2+...)/n = Y. "
-        "Paso 3 — total esperado = X + Y (SUMÁ, no promedies). "
-        "Indicá también si en la mayoría de partidos anotaron ambos (BTTS). "
-        "Terminá con 'Recomendación: Over/Under X.X goles'."
+        "Leé el promedio de 'Goles anotados' de cada equipo en la sección ESTADÍSTICAS. "
+        "Mostrá: equipo1 promedio X, equipo2 promedio Y, total X+Y. "
+        "Indicá también si suelen anotar ambos. "
+        "Usá la línea 'goles' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners": (
-        "Analizá SOLO los corners totales (ALL_Corner kicks). "
-        "IMPORTANTE: cada stat tiene el formato 'Equipo1=N | Equipo2=M', donde N son los corners "
-        "del equipo local y M los del visitante en ese partido. "
-        "Paso 1 — sumá los corners de equipo1 en todos sus partidos y dividí: promedio1 = X. "
-        "Paso 2 — sumá los corners de equipo2 en todos sus partidos y dividí: promedio2 = Y. "
-        "Paso 3 — total esperado = promedio1 + promedio2 (SUMÁ los dos promedios, NO los promedies). "
-        "Terminá con 'Recomendación: Over/Under X.X corners totales'."
+        "Leé el promedio de ALL_Corner kicks de cada equipo en la sección ESTADÍSTICAS. "
+        "Mostrá: equipo1 promedio X, equipo2 promedio Y, total X+Y. "
+        "Usá la línea 'corners' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners_1h": (
-        "Analizá SOLO corners del PRIMER TIEMPO (1ST_Corner kicks). "
-        "Paso 1 — promedio de corners 1T de equipo1: (c1+c2+...)/n = X. "
-        "Paso 2 — promedio de corners 1T de equipo2: (c1+c2+...)/n = Y. "
-        "Paso 3 — total esperado = X + Y (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X corners - 1er tiempo'."
+        "Leé el promedio de 1ST_Corner kicks de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'corners_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners_2h": (
-        "Analizá SOLO corners del SEGUNDO TIEMPO (2ND_Corner kicks). "
-        "Paso 1 — promedio de corners 2T de equipo1: (c1+c2+...)/n = X. "
-        "Paso 2 — promedio de corners 2T de equipo2: (c1+c2+...)/n = Y. "
-        "Paso 3 — total esperado = X + Y (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X corners - 2do tiempo'."
+        "Leé el promedio de 2ND_Corner kicks de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'corners_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas": (
-        "Analizá SOLO tarjetas amarillas totales (ALL_Yellow cards). "
-        "Paso 1 — promedio de amarillas de equipo1: (a1+a2+...)/n = X. "
-        "Paso 2 — promedio de amarillas de equipo2: (a1+a2+...)/n = Y. "
-        "Paso 3 — total esperado = X + Y (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X tarjetas amarillas'."
+        "Leé el promedio de ALL_Yellow cards de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'tarjetas_amarillas' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas_1h": (
-        "Analizá SOLO amarillas del PRIMER TIEMPO (1ST_Yellow cards). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X amarillas - 1er tiempo'."
+        "Leé el promedio de 1ST_Yellow cards de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'tarjetas_amarillas_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas_2h": (
-        "Analizá SOLO amarillas del SEGUNDO TIEMPO (2ND_Yellow cards). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X amarillas - 2do tiempo'."
+        "Leé el promedio de 2ND_Yellow cards de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'tarjetas_amarillas_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_rojas": (
-        "Analizá SOLO tarjetas rojas (ALL_Red cards). "
-        "¿En cuántos de los últimos partidos de cada equipo hubo roja? Calculá la frecuencia. "
-        "Terminá con 'Recomendación: [Sí/No es probable una tarjeta roja]'."
+        "Leé el promedio de ALL_Red cards de cada equipo en ESTADÍSTICAS. "
+        "Indicá en cuántos partidos hubo roja y si es probable. "
+        "Usá la línea 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS si existe; "
+        "si no, recomendá Sí/No según la frecuencia."
     ),
     "tarjetas_rojas_1h": (
-        "Analizá SOLO rojas del PRIMER TIEMPO (1ST_Red cards). Frecuencia en el 1er tiempo. "
-        "Terminá con 'Recomendación: [Sí/No es probable una roja en el 1er tiempo]'."
+        "Leé el promedio de 1ST_Red cards. Frecuencia de rojas en 1er tiempo. "
+        "Recomendá Sí/No según la frecuencia observada."
     ),
     "tarjetas_rojas_2h": (
-        "Analizá SOLO rojas del SEGUNDO TIEMPO (2ND_Red cards). Frecuencia en el 2do tiempo. "
-        "Terminá con 'Recomendación: [Sí/No es probable una roja en el 2do tiempo]'."
+        "Leé el promedio de 2ND_Red cards. Frecuencia de rojas en 2do tiempo. "
+        "Recomendá Sí/No según la frecuencia observada."
     ),
     "remates": (
-        "Analizá SOLO remates al arco totales (ALL_Shots on target). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ, no promedies). "
-        "Terminá con 'Recomendación: Over/Under X.X remates al arco'."
+        "Leé el promedio de ALL_Shots on target de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'remates' de LÍNEAS PRE-CALCULADAS."
     ),
     "remates_1h": (
-        "Analizá SOLO remates al arco del PRIMER TIEMPO (1ST_Shots on target). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X remates - 1er tiempo'."
+        "Leé el promedio de 1ST_Shots on target. Mostrá promedios y total. "
+        "Usá la línea 'remates_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "remates_2h": (
-        "Analizá SOLO remates al arco del SEGUNDO TIEMPO (2ND_Shots on target). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X remates - 2do tiempo'."
+        "Leé el promedio de 2ND_Shots on target. Mostrá promedios y total. "
+        "Usá la línea 'remates_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas": (
-        "Analizá SOLO faltas totales (ALL_Fouls). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ, no promedies). "
-        "Terminá con 'Recomendación: Over/Under X.X faltas'."
+        "Leé el promedio de ALL_Fouls de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios individuales y el total (suma). "
+        "Usá la línea 'faltas' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas_1h": (
-        "Analizá SOLO faltas del PRIMER TIEMPO (1ST_Fouls). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X faltas - 1er tiempo'."
+        "Leé el promedio de 1ST_Fouls. Mostrá promedios y total. "
+        "Usá la línea 'faltas_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas_2h": (
-        "Analizá SOLO faltas del SEGUNDO TIEMPO (2ND_Fouls). "
-        "Promedio de equipo1 + promedio de equipo2 = total esperado (SUMÁ). "
-        "Terminá con 'Recomendación: Over/Under X.X faltas - 2do tiempo'."
+        "Leé el promedio de 2ND_Fouls. Mostrá promedios y total. "
+        "Usá la línea 'faltas_2h' de LÍNEAS PRE-CALCULADAS."
     ),
 }
 
