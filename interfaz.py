@@ -380,7 +380,6 @@ Tenés acceso a datos en tiempo real de:
 # No confiar solo en el LLM para decidir cuándo usar ACTION:ANALIZAR.
 # Esta función detecta la intención antes de llamar al modelo.
 _PRED_KEYWORDS = [
-    "cuantos", "cuántos", "cuantas", "cuántas",
     "habra", "habrá", "va a haber", "crees que",
     "apostar", "apuesta",
     "over ", "under ",
@@ -388,10 +387,15 @@ _PRED_KEYWORDS = [
     "prediccion", "predicción", "pronostico", "pronóstico",
     "analizá", "analiza el partido",
 ]
+# "cuántos/cuántas" solo es predicción cuando va seguido de una stat de partido
+_PRED_STAT_RE = re.compile(
+    r'cu[aá]nt[oa]s?\s+(goles?|corners?|tarjetas?|amarillas?|rojas?|faltas?|remates?|tiros?)',
+    re.IGNORECASE
+)
 
 def _es_prediccion(msg: str) -> bool:
     m = msg.lower()
-    return any(kw in m for kw in _PRED_KEYWORDS)
+    return any(kw in m for kw in _PRED_KEYWORDS) or bool(_PRED_STAT_RE.search(msg))
 
 # Patrón para detectar si el bot inventó estadísticas sin datos reales
 _STATS_INVENTADAS = re.compile(
@@ -407,6 +411,99 @@ _MSG_SIN_DATOS = (
     "Pedime que analice el partido y lo busco en tiempo real. "
     "Ejemplo: \"analizá Valur vs KR\" o \"cuántos corners habrá en el partido\"."
 )
+
+# ── Instrucciones de análisis por foco ───────────────────────────
+# Cada valor describe EXACTAMENTE qué debe calcular el LLM.
+# El LLM NO debe salirse de estas instrucciones.
+_FOCO_PROMPT = {
+    "completo": (
+        "Hacé un análisis completo: 1) resultado más probable comparando victorias, "
+        "posesión y remates; 2) Over/Under goles (promedio total); 3) corners esperados; "
+        "4) tarjetas amarillas esperadas; 5) faltas esperadas. "
+        "Para cada stat mostrá la operación: (v1+v2+...)/n = X. "
+        "Terminá con 'Recomendación: [apuesta concreta]'."
+    ),
+    "goles": (
+        "Analizá SOLO los goles (ALL_Goals). Mostrá el promedio de goles del equipo local "
+        "en sus últimos partidos y el del visitante. Sumá los promedios. "
+        "Indicá si conviene Over o Under y si ambos anotan (BTTS). "
+        "Mostrá la operación. Terminá con 'Recomendación: Over/Under X.X goles'."
+    ),
+    "corners": (
+        "Analizá SOLO los corners totales (ALL_Corner kicks). "
+        "Promedio de corners por partido del equipo local y del visitante. "
+        "Sumá los promedios → total esperado. Mostrá la operación (v1+v2+...)/n = X. "
+        "Terminá con 'Recomendación: Over/Under X.X corners'."
+    ),
+    "corners_1h": (
+        "Analizá SOLO corners del PRIMER TIEMPO (1ST_Corner kicks). "
+        "Promedio de cada equipo en el 1er tiempo. Total esperado. "
+        "Mostrá la operación. Terminá con 'Recomendación: Over/Under X.X corners - 1er tiempo'."
+    ),
+    "corners_2h": (
+        "Analizá SOLO corners del SEGUNDO TIEMPO (2ND_Corner kicks). "
+        "Promedio de cada equipo en el 2do tiempo. Total esperado. "
+        "Mostrá la operación. Terminá con 'Recomendación: Over/Under X.X corners - 2do tiempo'."
+    ),
+    "tarjetas_amarillas": (
+        "Analizá SOLO tarjetas amarillas totales (ALL_Yellow cards). "
+        "Promedio de amarillas por partido de cada equipo. Total esperado. "
+        "Mostrá la operación. Terminá con 'Recomendación: Over/Under X.X tarjetas amarillas'."
+    ),
+    "tarjetas_amarillas_1h": (
+        "Analizá SOLO amarillas del PRIMER TIEMPO (1ST_Yellow cards). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X amarillas - 1er tiempo'."
+    ),
+    "tarjetas_amarillas_2h": (
+        "Analizá SOLO amarillas del SEGUNDO TIEMPO (2ND_Yellow cards). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X amarillas - 2do tiempo'."
+    ),
+    "tarjetas_rojas": (
+        "Analizá SOLO tarjetas rojas (ALL_Red cards). "
+        "¿En cuántos de los últimos N partidos de cada equipo hubo roja? Calculá la frecuencia. "
+        "Terminá con 'Recomendación: [Sí/No es probable una tarjeta roja]'."
+    ),
+    "tarjetas_rojas_1h": (
+        "Analizá SOLO rojas del PRIMER TIEMPO (1ST_Red cards). Frecuencia en el 1er tiempo. "
+        "Terminá con 'Recomendación: [Sí/No es probable una roja en el 1er tiempo]'."
+    ),
+    "tarjetas_rojas_2h": (
+        "Analizá SOLO rojas del SEGUNDO TIEMPO (2ND_Red cards). Frecuencia en el 2do tiempo. "
+        "Terminá con 'Recomendación: [Sí/No es probable una roja en el 2do tiempo]'."
+    ),
+    "remates": (
+        "Analizá SOLO remates al arco totales (ALL_Shots on target). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X remates al arco'."
+    ),
+    "remates_1h": (
+        "Analizá SOLO remates al arco del PRIMER TIEMPO (1ST_Shots on target). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X remates - 1er tiempo'."
+    ),
+    "remates_2h": (
+        "Analizá SOLO remates al arco del SEGUNDO TIEMPO (2ND_Shots on target). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X remates - 2do tiempo'."
+    ),
+    "faltas": (
+        "Analizá SOLO faltas totales (ALL_Fouls). "
+        "Promedio de faltas por partido de cada equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X faltas'."
+    ),
+    "faltas_1h": (
+        "Analizá SOLO faltas del PRIMER TIEMPO (1ST_Fouls). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X faltas - 1er tiempo'."
+    ),
+    "faltas_2h": (
+        "Analizá SOLO faltas del SEGUNDO TIEMPO (2ND_Fouls). "
+        "Promedio por equipo. Total esperado. "
+        "Terminá con 'Recomendación: Over/Under X.X faltas - 2do tiempo'."
+    ),
+}
 
 def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False):
     historial.append({"role": "user", "content": mensaje})
@@ -431,13 +528,14 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
         mensajes.append({
             "role": "system",
             "content": (
-                "⚠️ OBLIGATORIO — ACCIÓN REQUERIDA AHORA: "
-                "El mensaje que sigue es un pedido de PREDICCIÓN o APUESTA. "
-                "Tu ÚNICA respuesta válida es: frase breve de confirmación "
-                "+ ACTION:ANALIZAR|equipo1|equipo2|foco|liga al final. "
-                "Está TERMINANTEMENTE PROHIBIDO responder con promedios, "
-                "porcentajes o estadísticas propias. "
-                "Si no terminás con ACTION:ANALIZAR tu respuesta será descartada."
+                "⚠️ ACCIÓN OBLIGATORIA: El usuario pide una PREDICCIÓN o ESTADÍSTICA FUTURA. "
+                "Tu respuesta DEBE terminar con:\n"
+                "ACTION:ANALIZAR|[equipo_local]|[equipo_visitante]|[foco]|[liga]\n"
+                "Focos válidos: corners, goles, tarjetas_amarillas, tarjetas_rojas, "
+                "remates, faltas, completo (y variantes _1h/_2h).\n"
+                "Escribí UNA sola frase breve antes (ej: 'Voy a buscar los datos.') "
+                "y luego la acción. PROHIBIDO responder sin ACTION:ANALIZAR. "
+                "PROHIBIDO inventar estadísticas o promedios."
             )
         })
         mensajes.append(historial[-1])
@@ -599,26 +697,24 @@ class App(ctk.CTk):
                 else:
                     instruccion_periodo = "Usá los datos con prefijo ALL_ (partido completo)."
 
+                # Instrucción específica para el foco pedido
+                instruccion_foco = _FOCO_PROMPT.get(foco_lower, _FOCO_PROMPT["completo"])
+
                 analisis = chat_con_ia(
-                f"""Basándote ÚNICAMENTE en los datos de SofaScore que te paso, hacé un análisis orientado a apuestas sobre: {foco}.
+                f"""Analizá el partido {equipo1} vs {equipo2} basándote ÚNICAMENTE en los datos de SofaScore.
 
-                PERÍODO: {instruccion_periodo}
+PERÍODO A USAR: {instruccion_periodo}
 
-                Calculá SIEMPRE estas métricas usando los datos del período correcto:
-                - Resultado más probable (si aplica): comparé victorias, posesión, tiros al arco y goles
-                - Over/Under goles: calculá el promedio de goles totales por partido
-                - Ambos equipos anotan: en cuántos partidos anotaron ambos
-                - Corners: promedio de corners por equipo y total esperado
-                - Tarjetas amarillas: promedio por equipo y total esperado
-                - Tarjetas rojas: si hubo alguna en los últimos partidos
-                - Remates al arco: promedio por equipo
-                - Faltas: promedio por equipo
-                - Calculá los promedios mostrando la operación: (v1 + v2 + v3) / n = X.
-                - Terminá con: "Recomendación: [apuesta concreta con número exacto y período si aplica]"
+TAREA — respondé SOLO lo siguiente (no te salgas de esto):
+{instruccion_foco}
 
-                Respondé en texto corrido. Sin listas ni bullets. Máximo 160 palabras.
-                Terminá con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar."
-                No uses conocimiento propio. Solo los datos de DATOS REALES DE SOFASCORE.""",
+REGLAS ESTRICTAS:
+- Usá SOLO los datos del período indicado (no mezcles prefijos).
+- Mostrá las operaciones: (v1+v2+...)/n = X.
+- Máximo 130 palabras. Texto corrido, sin listas ni bullets.
+- Si algún dato no está disponible en SofaScore, decí exactamente cuál falta.
+- NO uses conocimiento propio. Solo los datos de SofaScore.
+- Terminá siempre con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
                 datos_sofascore=datos
             )
                 
@@ -632,16 +728,18 @@ class App(ctk.CTk):
             # ── Caso B: respuesta normal ──────────────────────────────────────
             else:
                 # Guardia de seguridad: si era un pedido de predicción y el LLM
-                # respondió con estadísticas inventadas (sin ACTION:ANALIZAR),
-                # descartar la respuesta y mostrar mensaje limpio.
-                if es_pred and _STATS_INVENTADAS.search(respuesta):
-                    texto_limpio = _MSG_SIN_DATOS
-                    # Corregir también el historial para no "recordar" stats falsas
-                    if historial and historial[-1]["role"] == "assistant":
-                        historial[-1]["content"] = texto_limpio
-                    self.agregar_mensaje("🤖", texto_limpio)
-                    self.set_status("")
-                    return
+                # NO disparó ACTION:ANALIZAR, descartar la respuesta SALVO que
+                # sea una pregunta de aclaración legítima (tiene "?" y es corta).
+                if es_pred:
+                    es_aclaracion = "?" in respuesta and len(respuesta.strip()) < 250
+                    if not es_aclaracion:
+                        texto_limpio = _MSG_SIN_DATOS
+                        # Corregir también el historial para no "recordar" stats falsas
+                        if historial and historial[-1]["role"] == "assistant":
+                            historial[-1]["content"] = texto_limpio
+                        self.agregar_mensaje("🤖", texto_limpio)
+                        self.set_status("")
+                        return
 
                 self.chat.configure(state="normal")
                 self.chat.insert("end", "\n🤖:\n")
