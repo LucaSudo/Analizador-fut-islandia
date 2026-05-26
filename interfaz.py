@@ -69,6 +69,7 @@ def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=5):
     return partidos[:ultimas_rondas]
 
 def obtener_estadisticas(page, evento_id):
+    """Devuelve dict {periodo_stat: {home, away}} para un evento."""
     try:
         data = fetch_api(page, f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics")
         stats = {}
@@ -76,39 +77,107 @@ def obtener_estadisticas(page, evento_id):
             periodo = grupo["period"]  # "ALL", "1ST" o "2ND"
             for g in grupo["groups"]:
                 for item in g["statisticsItems"]:
-                    stats[f"{periodo}_{item['name']}"] = {
-                        "home": item.get("home", "?"),
-                        "away": item.get("away", "?")
-                    }
+                    clave = f"{periodo}_{item['name']}"
+                    if clave not in stats:   # evitar duplicados (Total shots aparece 2 veces)
+                        stats[clave] = {
+                            "home": item.get("home", "?"),
+                            "away": item.get("away", "?")
+                        }
         return stats
     except:
         return {}
 
+# Stats de conteo que se pueden promediar directamente
+_STATS_A_PRECOMPUTAR = [
+    ("ALL", "Corner kicks"),
+    ("1ST", "Corner kicks"),
+    ("2ND", "Corner kicks"),
+    ("ALL", "Yellow cards"),
+    ("1ST", "Yellow cards"),
+    ("2ND", "Yellow cards"),
+    ("ALL", "Red cards"),
+    ("1ST", "Red cards"),
+    ("2ND", "Red cards"),
+    ("ALL", "Shots on target"),
+    ("1ST", "Shots on target"),
+    ("2ND", "Shots on target"),
+    ("ALL", "Fouls"),
+    ("1ST", "Fouls"),
+    ("2ND", "Fouls"),
+    ("ALL", "Total shots"),
+]
+
+def precomputar_stats_equipo(page, nombre_equipo, n=5):
+    """
+    Busca los últimos N partidos terminados y calcula promedios EN PYTHON,
+    extrayendo el valor correcto (local o visitante) de cada stat.
+    Así el LLM recibe promedios ya calculados, sin riesgo de confundir columnas.
+    """
+    partidos = obtener_partidos_equipo(page, nombre_equipo, n)
+    acum     = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
+    goles    = []
+    refs     = []
+
+    for e in partidos:
+        home     = e["homeTeam"]["name"]
+        away     = e["awayTeam"]["name"]
+        es_local = nombre_equipo.lower() in home.lower()
+        ronda    = e.get("roundInfo", {}).get("round", "?")
+
+        gh = e.get("homeScore", {}).get("current", None)
+        ga = e.get("awayScore", {}).get("current", None)
+        if gh is not None and ga is not None:
+            goles.append(gh if es_local else ga)
+
+        refs.append(
+            f"R{ronda}: {home} {gh}-{ga} {away} "
+            f"({'local' if es_local else 'visitante'})"
+        )
+
+        stats = obtener_estadisticas(page, e["id"])
+        page.wait_for_timeout(800)   # evitar rate-limiting de SofaScore
+
+        for periodo, stat_name in _STATS_A_PRECOMPUTAR:
+            clave   = f"{periodo}_{stat_name}"
+            if clave not in stats:
+                continue
+            val_str = stats[clave]["home"] if es_local else stats[clave]["away"]
+            try:
+                acum[clave].append(int(str(val_str)))
+            except (ValueError, TypeError):
+                pass
+
+    lineas = [f"ESTADÍSTICAS DE {nombre_equipo.upper()} (últimos {len(partidos)} partidos terminados):"]
+    lineas.append(f"  Partidos: {' | '.join(refs)}")
+
+    if goles:
+        lineas.append(f"  Goles anotados: {goles} → promedio = {sum(goles)/len(goles):.2f}")
+
+    for periodo, stat_name in _STATS_A_PRECOMPUTAR:
+        clave  = f"{periodo}_{stat_name}"
+        vals   = acum[clave]
+        if vals:
+            prom = sum(vals) / len(vals)
+            lineas.append(f"  {clave}: {vals} → promedio = {prom:.2f}")
+
+    return "\n".join(lineas)
+
 def formatear_partido(evento, stats):
+    """Mantener para uso en memory.py (verificación de predicciones)."""
     home = evento["homeTeam"]["name"]
     away = evento["awayTeam"]["name"]
     gh = evento.get("homeScore", {}).get("current", "?")
     ga = evento.get("awayScore", {}).get("current", "?")
     texto = f"\n  {home} {gh} - {ga} {away}\n"
     claves_interes = [
-        # ── Globales ──────────────────────────────────────────────────────
-        "ALL_Ball possession", "ALL_Total shots",  "ALL_Shots on target",
-        "ALL_Corner kicks",    "ALL_Yellow cards",  "ALL_Red cards",
-        "ALL_Fouls",           "ALL_Big chances",   "ALL_Expected goals",
-        "ALL_Total saves",
-        # ── Primer tiempo (1ST) ───────────────────────────────────────────
-        "1ST_Corner kicks",   "1ST_Yellow cards",  "1ST_Red cards",
-        "1ST_Total shots",    "1ST_Shots on target","1ST_Fouls",
-        # ── Segundo tiempo (2ND) ──────────────────────────────────────────
-        "2ND_Corner kicks",   "2ND_Yellow cards",  "2ND_Red cards",
-        "2ND_Total shots",    "2ND_Shots on target","2ND_Fouls",
+        "ALL_Corner kicks", "ALL_Yellow cards", "ALL_Red cards",
+        "ALL_Shots on target", "ALL_Fouls", "ALL_Total shots",
+        "1ST_Corner kicks", "1ST_Yellow cards", "1ST_Shots on target", "1ST_Fouls",
+        "2ND_Corner kicks", "2ND_Yellow cards", "2ND_Shots on target", "2ND_Fouls",
     ]
     for clave in claves_interes:
         if clave in stats:
-            # Etiquetar explícitamente qué valor corresponde a cada equipo
-            # para que el LLM no confunda home/away al calcular promedios
-            texto += (f"    {clave}: {home}={stats[clave]['home']} | "
-                      f"{away}={stats[clave]['away']}\n")
+            texto += f"    {clave}: {home}={stats[clave]['home']} | {away}={stats[clave]['away']}\n"
     return texto
 
 def hacer_analisis_completo(equipo1, equipo2):
@@ -127,19 +196,11 @@ def hacer_analisis_completo(equipo1, equipo2):
         except:
             pass  # Si falla, usar el valor que ya tiene RONDAS_TOTALES
 
-        eventos1 = obtener_partidos_equipo(page, equipo1)
-        eventos2 = obtener_partidos_equipo(page, equipo2)
-
-        # Pequeño delay entre llamadas para evitar rate-limiting de SofaScore
-        # (sin pausa, las 10 llamadas rápidas hacen que algunas devuelvan {})
-        partidos1 = []
-        for e in eventos1:
-            partidos1.append(formatear_partido(e, obtener_estadisticas(page, e["id"])))
-            page.wait_for_timeout(400)
-        partidos2 = []
-        for e in eventos2:
-            partidos2.append(formatear_partido(e, obtener_estadisticas(page, e["id"])))
-            page.wait_for_timeout(400)
+        # Pre-calcular stats en Python para cada equipo.
+        # Los promedios se calculan extrayendo el valor correcto (home/away)
+        # sin dejarle esa tarea al LLM (que confundía columnas).
+        stats_eq1 = precomputar_stats_equipo(page, equipo1)
+        stats_eq2 = precomputar_stats_equipo(page, equipo2)
 
         # Buscar el próximo partido entre los dos equipos (incluye hoy aunque
         # el timestamp ya pasó — mismo criterio que fixture_loader)
@@ -173,13 +234,11 @@ def hacer_analisis_completo(equipo1, equipo2):
         browser.close()
         playwright.stop()
 
-    contexto = "DATOS REALES DE SOFASCORE:\n"
-    contexto += f"=== ÚLTIMOS PARTIDOS DE {equipo1.upper()} ===\n"
-    for p in partidos1:
-        contexto += p
-    contexto += f"\n=== ÚLTIMOS PARTIDOS DE {equipo2.upper()} ===\n"
-    for p in partidos2:
-        contexto += p
+    contexto = (
+        "DATOS REALES DE SOFASCORE (promedios ya calculados por equipo):\n\n"
+        f"{stats_eq1}\n\n"
+        f"{stats_eq2}\n"
+    )
     return contexto, evento_id_proximo
 
 
@@ -737,25 +796,26 @@ class App(ctk.CTk):
                 instruccion_foco = _FOCO_PROMPT.get(foco_lower, _FOCO_PROMPT["completo"])
 
                 analisis = chat_con_ia(
-                f"""Analizá el partido {equipo1} vs {equipo2} basándote ÚNICAMENTE en los datos de SofaScore.
+                f"""Analizá el partido {equipo1} vs {equipo2} usando los datos de SofaScore.
 
 PERÍODO A USAR: {instruccion_periodo}
 
-TAREA — respondé SOLO lo siguiente (no te salgas de esto):
+IMPORTANTE: Los datos ya incluyen los promedios pre-calculados por equipo.
+Cada línea tiene el formato: "stat: [v1, v2, ...] → promedio = X.XX"
+Los promedios son exactos — usá esos valores directamente, no los recalcules.
+
+TAREA:
 {instruccion_foco}
 
-REGLAS ESTRICTAS:
-- Usá SOLO los datos del período indicado (no mezcles prefijos).
-- Usá MÍNIMO 4 partidos por equipo para calcular el promedio. Si tenés menos de 4
-  partidos con datos de esa stat, aclaralo ("solo N partidos disponibles").
-- Mostrá las operaciones: (v1+v2+...)/n = X.
-- LÍNEA DE APUESTA: siempre expresala como número entero + .5 (ej: 9.5, 10.5, 11.5).
-  Para elegirla: tomá tu total esperado, redondeá al entero más cercano y usá ese ± 0.5.
-  Ejemplo: si el total esperado es 12.35 → la línea es Over 11.5 o Under 12.5.
-- Máximo 140 palabras. Texto corrido, sin listas ni bullets.
-- Si algún dato no está disponible en SofaScore, decí exactamente cuál falta.
-- NO uses conocimiento propio. Solo los datos de SofaScore.
-- Terminá siempre con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
+REGLAS:
+- Usá SOLO los promedios del período indicado (no mezcles ALL/1ST/2ND).
+- Total del partido = promedio_equipo1 + promedio_equipo2 (SUMÁ, no promedies).
+- LÍNEA DE APUESTA: siempre en formato X.5 (ej: 9.5, 10.5, 11.5, 12.5).
+  Tomá el total esperado → redondeá al entero más cercano → usá ese ± 0.5.
+- Si hay menos de 4 partidos con datos, aclaralo.
+- Máximo 120 palabras. Texto corrido, sin listas.
+- NO uses conocimiento propio.
+- Terminá con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
                 datos_sofascore=datos
             )
                 
