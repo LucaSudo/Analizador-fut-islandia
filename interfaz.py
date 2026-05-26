@@ -599,10 +599,12 @@ def _es_respuesta_a_aclaracion_partido() -> bool:
 
 # Patrón para detectar si el bot inventó estadísticas sin datos reales
 _STATS_INVENTADAS = re.compile(
-    r'promedio\s+de\s+\d|'          # "promedio de 6"
-    r'\(\s*\d+\s*\+\s*\d+|'         # "(3+2+..."
-    r'/\s*\d+\s*=\s*\d|'            # "/ 10 = 3"
-    r'recomendaci[oó]n:\s*.{0,60}\d',  # "Recomendación: Over 2.5"
+    r'promedio\s+(?:de\s+)?\d|'         # "promedio de 6" o "promedio 3.60"
+    r'\(\s*\d+\s*\+\s*\d+|'             # "(3+2+..."
+    r'/\s*\d+\s*=\s*\d|'               # "/ 10 = 3"
+    r'recomendaci[oó]n:\s*.{0,60}\d|'  # "Recomendación: Over 2.5"
+    r'\bover\s+\d+[.,]\d|'             # "Over 9.5"
+    r'l[ií]nea\s+(?:de\s+)?apuesta',   # "línea de apuesta"
     re.IGNORECASE
 )
 
@@ -977,7 +979,13 @@ REGLAS:
                     # Permitir respuestas con "?" que sean preguntas de aclaración
                     # (ej: "¿De qué partido hablás? Valur tiene KR [HOY] y Víkingur el 31/05.")
                     # Aumentamos el límite a 400 chars para cubrir listas de partidos con fechas.
-                    es_aclaracion = "?" in respuesta and len(respuesta.strip()) < 400
+                    # Una aclaración legítima tiene "?", es corta, y NO contiene
+                    # patrones de estadísticas inventadas (promedio X, Over X.Y, etc.)
+                    es_aclaracion = (
+                        "?" in respuesta
+                        and len(respuesta.strip()) < 400
+                        and not _STATS_INVENTADAS.search(respuesta)
+                    )
                     if not es_aclaracion:
                         texto_limpio = _MSG_SIN_DATOS
                         # Corregir también el historial para no "recordar" stats falsas

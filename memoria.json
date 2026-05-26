@@ -320,6 +320,153 @@
       "temporada_id": 89094,
       "resultado_real": null,
       "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 15:46",
+      "equipo1": "Valur",
+      "equipo2": "KR Reykjavík",
+      "foco": "corners",
+      "prediccion": "Valur Reykjavík promedio 3.60, KR Reykjavík promedio 10.20, total 13.80. La línea de apuesta es Over 13.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426876,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": {
+        "marcador": "KR Reykjavík 3 - 1 Valur Reykjavík",
+        "goles_home": 3,
+        "goles_away": 1,
+        "ganador": "home",
+        "equipo_home": "KR Reykjavík",
+        "equipo_away": "Valur Reykjavík",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "55%",
+              "away": "45%"
+            },
+            "Total shots": {
+              "home": "27",
+              "away": "13"
+            },
+            "Corner kicks": {
+              "home": "12",
+              "away": "5"
+            },
+            "Fouls": {
+              "home": "7",
+              "away": "13"
+            },
+            "Yellow cards": {
+              "home": "2",
+              "away": "6"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "1"
+            },
+            "Shots on target": {
+              "home": "9",
+              "away": "4"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "51%",
+              "away": "49%"
+            },
+            "Total shots": {
+              "home": "13",
+              "away": "1"
+            },
+            "Corner kicks": {
+              "home": "4",
+              "away": "2"
+            },
+            "Fouls": {
+              "home": "3",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "1"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "4",
+              "away": "0"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "61%",
+              "away": "39%"
+            },
+            "Total shots": {
+              "home": "14",
+              "away": "12"
+            },
+            "Corner kicks": {
+              "home": "8",
+              "away": "3"
+            },
+            "Fouls": {
+              "home": "4",
+              "away": "7"
+            },
+            "Yellow cards": {
+              "home": "2",
+              "away": "5"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "1"
+            },
+            "Shots on target": {
+              "home": "5",
+              "away": "4"
+            }
+          }
+        }
+      },
+      "acerto": true
+    },
+    {
+      "fecha": "2026-05-26 15:19",
+      "equipo1": "Valur",
+      "equipo2": "KR Reykjavík",
+      "foco": "corners",
+      "prediccion": "No hay datos suficientes para calcular los promedios de corners para Valur y KR Reykjavík. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": null,
+      "liga_id": 406,
+      "temporada_id": 88529,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 15:33",
+      "equipo1": "Valur Reykjavík",
+      "equipo2": "Víkingur Reykjavík",
+      "foco": "corners",
+      "prediccion": "Valur promedio 3.60, Víkingur Reykjavík promedio 6.40, total 10.00. La línea de apuesta es Over 9.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426904,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 20:06",
+      "equipo1": "Club Nacional de Montevideo",
+      "equipo2": "Coquimbo Unido",
+      "foco": "corners",
+      "prediccion": "Club Nacional de Montevideo promedio 3.60, Coquimbo Unido promedio 5.80, total 9.40. La línea de apuesta es Over 9.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
     }
   ],
   "notas_equipos": {},
