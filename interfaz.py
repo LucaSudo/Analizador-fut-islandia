@@ -565,6 +565,18 @@ def _es_prediccion(msg: str) -> bool:
     m = msg.lower()
     return any(kw in m for kw in _PRED_KEYWORDS) or bool(_PRED_STAT_RE.search(msg))
 
+def _obtener_fixtures_texto() -> str:
+    """
+    Extrae la sección '=== PRÓXIMOS PARTIDOS ===' del SYSTEM_PROMPT para
+    inyectarla en el prompt de aclaración. Así el LLM no necesita "buscar"
+    los fixtures en el contexto largo — los tiene justo enfrente y no puede
+    inventar nombres ni fechas.
+    """
+    start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
+    if start == -1:
+        return ""
+    return SYSTEM_PROMPT[start:start + 2000]
+
 def _es_respuesta_a_aclaracion_partido() -> bool:
     """
     Devuelve True si el último mensaje del asistente fue una pregunta de aclaración
@@ -730,9 +742,17 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
             )
         else:
             # Nueva pregunta de predicción — el partido puede o no estar claro.
+            # Inyectamos el listado real de fixtures para que el LLM no invente
+            # nombres ni fechas al preguntar por aclaración.
+            fixtures_ctx = _obtener_fixtures_texto()
+            fixtures_bloque = (
+                f"\nLISTA EXACTA DE PRÓXIMOS PARTIDOS (usá SOLO estos datos):\n{fixtures_ctx}\n"
+                if fixtures_ctx else ""
+            )
             inyeccion = (
                 "⚠️ ACCIÓN REQUERIDA — El usuario pide una PREDICCIÓN o ESTADÍSTICA. "
-                "Seguí EXACTAMENTE estas reglas:\n\n"
+                "Seguí EXACTAMENTE estas reglas:\n"
+                f"{fixtures_bloque}\n"
                 "CASO 1 — El partido es ABSOLUTAMENTE CLARO:\n"
                 "  ÚNICAMENTE si el usuario nombró AMBOS equipos explícitamente en su mensaje,\n"
                 "  O dijo 'de hoy'/'hoy' y hay EXACTAMENTE un partido [HOY] de ese equipo.\n"
@@ -740,10 +760,11 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
                 "  ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n\n"
                 "CASO 2 — CUALQUIER OTRA SITUACIÓN (usuario mencionó solo UN equipo sin\n"
                 "  aclarar cuál partido, no dijo 'hoy', o hay varios partidos próximos):\n"
-                "  → Buscás en los fixtures los partidos próximos de ese equipo y preguntás:\n"
+                "  → Usá la LISTA DE ARRIBA para buscar los partidos del equipo mencionado.\n"
                 "    Si tiene 1 partido: '¿Hablás del partido [Equipo] vs [Rival] el [fecha]?'\n"
                 "    Si tiene 2+ partidos: '¿De qué partido hablás? [Equipo] tiene [partido1 fecha] y [partido2 fecha].'\n"
-                "  NO emitas ACTION:ANALIZAR. Esperá la respuesta del usuario.\n\n"
+                "  CRÍTICO: los nombres de equipos y fechas deben ser EXACTAMENTE los de la lista.\n"
+                "  NUNCA inventes ni cambies fechas. NO emitas ACTION:ANALIZAR. Esperá al usuario.\n\n"
                 "Focos válidos: corners, corners_1h, corners_2h, goles, tarjetas_amarillas, "
                 "tarjetas_rojas, remates, faltas, completo (y variantes _1h/_2h).\n"
                 "NUNCA inventés estadísticas. NUNCA emitas ACTION:ANALIZAR sin partido confirmado."
