@@ -50,12 +50,18 @@ def obtener_pagina():
     return playwright, browser, page
 
 def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=4):
+    """Retorna los últimos N partidos TERMINADOS del equipo (excluye en curso y futuros)."""
     partidos = []
-    for ronda in range(RONDAS_TOTALES, max(0, RONDAS_TOTALES - ultimas_rondas - 2), -1):
+    # Buscar en más rondas de las necesarias para asegurar N partidos terminados
+    for ronda in range(RONDAS_TOTALES + 1, max(0, RONDAS_TOTALES - ultimas_rondas - 4), -1):
         data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
         for evento in data.get("events", []):
-            home = evento["homeTeam"]["name"]
-            away = evento["awayTeam"]["name"]
+            home   = evento["homeTeam"]["name"]
+            away   = evento["awayTeam"]["name"]
+            status = evento.get("status", {}).get("type", "")
+            # Solo partidos terminados — los en curso no tienen stats completas
+            if status != "finished":
+                continue
             if nombre_equipo.lower() in home.lower() or nombre_equipo.lower() in away.lower():
                 partidos.append(evento)
         if len(partidos) >= ultimas_rondas:
@@ -123,22 +129,29 @@ def hacer_analisis_completo(equipo1, equipo2):
         partidos1 = [formatear_partido(e, obtener_estadisticas(page, e["id"])) for e in eventos1]
         partidos2 = [formatear_partido(e, obtener_estadisticas(page, e["id"])) for e in eventos2]
 
-        # Buscar el próximo partido entre los dos equipos
-        # Busca desde ronda_actual - 1 hasta ronda_actual + 6 para cubrir todos los casos
+        # Buscar el próximo partido entre los dos equipos (incluye hoy aunque
+        # el timestamp ya pasó — mismo criterio que fixture_loader)
         ahora = datetime.now().timestamp()
+        from datetime import date
+        inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
         evento_id_proximo = None
         ronda_inicio = max(1, RONDAS_TOTALES - 1)
         for ronda in range(ronda_inicio, RONDAS_TOTALES + 7):
             data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
             for evento in data.get("events", []):
-                home = evento["homeTeam"]["name"]
-                away = evento["awayTeam"]["name"]
+                home   = evento["homeTeam"]["name"]
+                away   = evento["awayTeam"]["name"]
                 status = evento.get("status", {}).get("type", "")
-                start = evento.get("startTimestamp", 0)
+                start  = evento.get("startTimestamp", 0)
                 equipo1_match = equipo1.lower() in home.lower() or equipo1.lower() in away.lower()
                 equipo2_match = equipo2.lower() in home.lower() or equipo2.lower() in away.lower()
-                es_futuro_o_en_curso = status == "inprogress" or (status == "notstarted" and start > ahora)
-                if equipo1_match and equipo2_match and es_futuro_o_en_curso:
+                es_hoy = inicio_hoy <= start < inicio_hoy + 86400
+                es_vigente = (
+                    status == "inprogress"
+                    or (status == "notstarted" and start > ahora)
+                    or (status == "notstarted" and es_hoy)  # partido de hoy aún sin actualizar
+                )
+                if equipo1_match and equipo2_match and es_vigente:
                     evento_id_proximo = evento["id"]
                     break
             if evento_id_proximo:
