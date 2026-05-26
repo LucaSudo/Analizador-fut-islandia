@@ -106,6 +106,21 @@ def obtener_estadisticas(page, evento_id):
     except:
         return {}
 
+import math as _math
+
+def calcular_linea_over(total_esperado: float) -> str:
+    """
+    Devuelve la línea Over en formato X.5 inmediatamente MENOR al total esperado.
+    Regla: parte_entera(total) + 0.5
+    Ejemplos: 13.80 → 'Over 13.5' | 10.20 → 'Over 9.5' | 9.70 → 'Over 9.5'
+    """
+    base = int(total_esperado)   # parte entera → piso natural
+    linea = base + 0.5
+    # Verificar que la línea es efectivamente menor al total
+    if linea >= total_esperado:
+        linea -= 1.0
+    return f"Over {linea:.1f}"
+
 # Stats de conteo que se pueden promediar directamente
 _STATS_A_PRECOMPUTAR = [
     ("ALL", "Corner kicks"),
@@ -183,7 +198,15 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
             prom = sum(vals) / len(vals)
             lineas.append(f"  {clave}: {vals} → promedio = {prom:.2f}")
 
-    return "\n".join(lineas)
+    promedios = {}
+    if goles:
+        promedios["goles"] = sum(goles) / len(goles)
+    for periodo, stat_name in _STATS_A_PRECOMPUTAR:
+        clave = f"{periodo}_{stat_name}"
+        if acum[clave]:
+            promedios[clave] = sum(acum[clave]) / len(acum[clave])
+
+    return "\n".join(lineas), promedios
 
 def formatear_partido(evento, stats):
     """Mantener para uso en memory.py (verificación de predicciones)."""
@@ -220,10 +243,9 @@ def hacer_analisis_completo(equipo1, equipo2):
             pass  # Si falla, usar el valor que ya tiene RONDAS_TOTALES
 
         # Pre-calcular stats en Python para cada equipo.
-        # Los promedios se calculan extrayendo el valor correcto (home/away)
-        # sin dejarle esa tarea al LLM (que confundía columnas).
-        stats_eq1 = precomputar_stats_equipo(page, equipo1)
-        stats_eq2 = precomputar_stats_equipo(page, equipo2)
+        # Devuelve (texto, dict_promedios) para calcular la línea de apuesta en Python.
+        stats_eq1, promedios_eq1 = precomputar_stats_equipo(page, equipo1)
+        stats_eq2, promedios_eq2 = precomputar_stats_equipo(page, equipo2)
 
         # Buscar el próximo partido entre los dos equipos (incluye hoy aunque
         # el timestamp ya pasó — mismo criterio que fixture_loader)
@@ -257,10 +279,42 @@ def hacer_analisis_completo(equipo1, equipo2):
         browser.close()
         playwright.stop()
 
+    # Calcular líneas de apuesta en Python para las stats principales
+    _FOCO_A_CLAVE = {
+        "corners":            "ALL_Corner kicks",
+        "corners_1h":         "1ST_Corner kicks",
+        "corners_2h":         "2ND_Corner kicks",
+        "goles":              "goles",
+        "tarjetas_amarillas": "ALL_Yellow cards",
+        "tarjetas_amarillas_1h": "1ST_Yellow cards",
+        "tarjetas_amarillas_2h": "2ND_Yellow cards",
+        "remates":            "ALL_Shots on target",
+        "remates_1h":         "1ST_Shots on target",
+        "remates_2h":         "2ND_Shots on target",
+        "faltas":             "ALL_Fouls",
+        "faltas_1h":          "1ST_Fouls",
+        "faltas_2h":          "2ND_Fouls",
+    }
+    lineas_python = {}
+    for foco_key, stat_clave in _FOCO_A_CLAVE.items():
+        v1 = promedios_eq1.get(stat_clave)
+        v2 = promedios_eq2.get(stat_clave)
+        if v1 is not None and v2 is not None:
+            total = v1 + v2
+            lineas_python[foco_key] = (total, calcular_linea_over(total))
+
+    # Agregar al contexto las líneas ya calculadas
+    lineas_ctx = []
+    for foco_key, (total, linea) in lineas_python.items():
+        lineas_ctx.append(f"  {foco_key}: total esperado = {total:.2f} → línea Python = {linea}")
+
     contexto = (
         "DATOS REALES DE SOFASCORE (promedios ya calculados por equipo):\n\n"
         f"{stats_eq1}\n\n"
-        f"{stats_eq2}\n"
+        f"{stats_eq2}\n\n"
+        "LÍNEAS DE APUESTA PRE-CALCULADAS POR PYTHON (usar directamente, no recalcular):\n"
+        + ("\n".join(lineas_ctx) if lineas_ctx else "  (sin datos suficientes)")
+        + "\n"
     )
     return contexto, evento_id_proximo
 
@@ -833,8 +887,9 @@ TAREA:
 REGLAS:
 - Usá SOLO los promedios del período indicado (no mezcles ALL/1ST/2ND).
 - Total del partido = promedio_equipo1 + promedio_equipo2 (SUMÁ, no promedies).
-- LÍNEA DE APUESTA: siempre en formato X.5 (ej: 9.5, 10.5, 11.5, 12.5).
-  Tomá el total esperado → redondeá al entero más cercano → usá ese ± 0.5.
+- LÍNEA DE APUESTA: usá EXACTAMENTE la línea que figura en "LÍNEAS DE APUESTA
+  PRE-CALCULADAS POR PYTHON" para el foco correspondiente. No la recalcules.
+  Esa línea garantiza que X.5 < total esperado (apuesta con sentido estadístico).
 - Si hay menos de 4 partidos con datos, aclaralo.
 - Máximo 120 palabras. Texto corrido, sin listas.
 - NO uses conocimiento propio.
