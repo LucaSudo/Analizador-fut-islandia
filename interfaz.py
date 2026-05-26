@@ -392,9 +392,12 @@ CASO C — El usuario menciona un equipo sin especificar, y ese equipo tiene UN 
 → Confirmás brevemente: "Entiendo que hablás del partido contra [rival] el [fecha], ¿es correcto?"
 → Esperás confirmación. Recién ahí disparás ACTION:ANALIZAR.
 
-CASO D — El usuario confirma con "sí", "ese", "correcto" o similar:
-→ Solo respondés con la información pendiente (fecha, hora, etc.).
-→ NO disparás ACTION:ANALIZAR a menos que el usuario agregue explícitamente un pedido de análisis en ese mismo mensaje.
+CASO D — El usuario confirma el partido ("sí", "ese", "el de KR", "el de hoy", el nombre del rival, etc.):
+→ Si la pregunta que motivó la aclaración era un pedido de PREDICCIÓN o ANÁLISIS:
+  Disparás ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga con el partido confirmado
+  y el foco de la pregunta original (corners, goles, etc.).
+→ Si la pregunta original era solo informativa (cuándo juega, dónde, etc.):
+  Respondés con la info solicitada. No disparás ACTION:ANALIZAR.
 
 ════════════════════════════════════════
 REGLA ABSOLUTA N°4 — NOMBRES DE EQUIPOS AMBIGUOS
@@ -562,6 +565,26 @@ def _es_prediccion(msg: str) -> bool:
     m = msg.lower()
     return any(kw in m for kw in _PRED_KEYWORDS) or bool(_PRED_STAT_RE.search(msg))
 
+def _es_respuesta_a_aclaracion_partido() -> bool:
+    """
+    Devuelve True si el último mensaje del asistente fue una pregunta de aclaración
+    sobre cuál partido analizar (ej: '¿De qué partido hablás?', '¿Hablás del partido...?').
+    Sirve para detectar que el usuario está CONFIRMANDO el partido, no haciendo una
+    pregunta nueva — y así forzar que el LLM dispare ACTION:ANALIZAR.
+    """
+    if not historial:
+        return False
+    for msg in reversed(historial):
+        if msg["role"] == "assistant":
+            c = msg["content"].lower()
+            return (
+                "¿de qué partido" in c
+                or "de qué partido hablás" in c
+                or "¿hablás del partido" in c
+                or "hablás del partido" in c
+            )
+    return False
+
 # Patrón para detectar si el bot inventó estadísticas sin datos reales
 _STATS_INVENTADAS = re.compile(
     r'promedio\s+de\s+\d|'          # "promedio de 6"
@@ -670,7 +693,8 @@ _FOCO_PROMPT = {
     ),
 }
 
-def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False):
+def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False,
+                es_confirmacion_partido=False):
     historial.append({"role": "user", "content": mensaje})
 
     contexto_memoria = generar_contexto_memoria()
@@ -687,30 +711,44 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
         })
 
     if forzar_action and historial:
-        # Inyectar recordatorio urgente justo ANTES del último mensaje del usuario
-        # para maximizar la chance de que el LLM dispare ACTION:ANALIZAR,
-        # PERO permitir pedir aclaración si el partido es ambiguo.
+        # Inyectar recordatorio urgente justo ANTES del último mensaje del usuario.
+        # Dos modos distintos según si el usuario está CONFIRMANDO un partido (tras
+        # una pregunta de aclaración previa) o haciendo una NUEVA pregunta de predicción.
         mensajes += historial[:-1]
-        mensajes.append({
-            "role": "system",
-            "content": (
+        if es_confirmacion_partido:
+            # El usuario acaba de confirmar qué partido quiere analizar.
+            # El historial ya tiene el foco original y el partido pedido.
+            inyeccion = (
+                "⚠️ El usuario confirmó el partido. "
+                "En la conversación ya tenés: el foco original de la pregunta (corners, goles, etc.) "
+                "y el partido que el usuario acaba de especificar. "
+                "Respondé con UNA frase muy corta ('Perfecto, voy a analizar...') y terminá con:\n"
+                "ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n"
+                "Asegurate de usar los nombres EXACTOS de los equipos tal como aparecen en los fixtures. "
+                "El equipo local es el primero listado en el fixture (home). "
+                "NUNCA inventés datos ni promedios."
+            )
+        else:
+            # Nueva pregunta de predicción — el partido puede o no estar claro.
+            inyeccion = (
                 "⚠️ ACCIÓN REQUERIDA — El usuario pide una PREDICCIÓN o ESTADÍSTICA. "
                 "Seguí EXACTAMENTE estas reglas:\n\n"
-                "CASO 1 — El partido es CLARO en el contexto:\n"
-                "  (el usuario nombró ambos equipos, O dijo 'de hoy'/'hoy' y hay un partido [HOY]\n"
-                "   para ese equipo en la lista de fixtures, O hay un único partido próximo)\n"
-                "  → Identificás ese partido. Escribís UNA frase corta y terminás con:\n"
+                "CASO 1 — El partido es ABSOLUTAMENTE CLARO:\n"
+                "  ÚNICAMENTE si el usuario nombró AMBOS equipos explícitamente en su mensaje,\n"
+                "  O dijo 'de hoy'/'hoy' y hay EXACTAMENTE un partido [HOY] de ese equipo.\n"
+                "  → Identificás ese partido, escribís UNA frase corta y terminás con:\n"
                 "  ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n\n"
-                "CASO 2 — El partido es AMBIGUO:\n"
-                "  (el equipo tiene VARIOS partidos próximos y el usuario NO especificó cuál)\n"
-                "  → Preguntás: '¿De qué partido hablás? [Equipo] tiene [partido1 con fecha] y [partido2 con fecha].'\n"
+                "CASO 2 — CUALQUIER OTRA SITUACIÓN (usuario mencionó solo UN equipo sin\n"
+                "  aclarar cuál partido, no dijo 'hoy', o hay varios partidos próximos):\n"
+                "  → Buscás en los fixtures los partidos próximos de ese equipo y preguntás:\n"
+                "    Si tiene 1 partido: '¿Hablás del partido [Equipo] vs [Rival] el [fecha]?'\n"
+                "    Si tiene 2+ partidos: '¿De qué partido hablás? [Equipo] tiene [partido1 fecha] y [partido2 fecha].'\n"
                 "  NO emitas ACTION:ANALIZAR. Esperá la respuesta del usuario.\n\n"
                 "Focos válidos: corners, corners_1h, corners_2h, goles, tarjetas_amarillas, "
                 "tarjetas_rojas, remates, faltas, completo (y variantes _1h/_2h).\n"
-                "NUNCA inventés estadísticas ni promedios. "
-                "NUNCA emitas ACTION:ANALIZAR sin saber exactamente qué partido."
+                "NUNCA inventés estadísticas. NUNCA emitas ACTION:ANALIZAR sin partido confirmado."
             )
-        })
+        mensajes.append({"role": "system", "content": inyeccion})
         mensajes.append(historial[-1])
     else:
         mensajes += historial
@@ -823,8 +861,12 @@ class App(ctk.CTk):
             # Detectar ANTES si es un pedido de predicción/apuesta.
             # Si lo es, inyectamos un recordatorio urgente al LLM para que
             # dispare ACTION:ANALIZAR en vez de inventar estadísticas.
-            es_pred = _es_prediccion(mensaje)
-            respuesta = chat_con_ia(mensaje, forzar_action=es_pred)
+            # Detectar si el usuario responde a una pregunta de aclaración previa
+            # (ej: bot preguntó "¿De qué partido hablás?" y el usuario dice "el de KR")
+            es_confirmacion = _es_respuesta_a_aclaracion_partido()
+            es_pred = _es_prediccion(mensaje) or es_confirmacion
+            respuesta = chat_con_ia(mensaje, forzar_action=es_pred,
+                                    es_confirmacion_partido=es_confirmacion)
 
             # ── Caso A: la respuesta contiene ACTION:ANALIZAR ─────────────────
             if "ACTION:ANALIZAR|" in respuesta:
