@@ -129,8 +129,17 @@ def hacer_analisis_completo(equipo1, equipo2):
 
         eventos1 = obtener_partidos_equipo(page, equipo1)
         eventos2 = obtener_partidos_equipo(page, equipo2)
-        partidos1 = [formatear_partido(e, obtener_estadisticas(page, e["id"])) for e in eventos1]
-        partidos2 = [formatear_partido(e, obtener_estadisticas(page, e["id"])) for e in eventos2]
+
+        # Pequeño delay entre llamadas para evitar rate-limiting de SofaScore
+        # (sin pausa, las 10 llamadas rápidas hacen que algunas devuelvan {})
+        partidos1 = []
+        for e in eventos1:
+            partidos1.append(formatear_partido(e, obtener_estadisticas(page, e["id"])))
+            page.wait_for_timeout(400)
+        partidos2 = []
+        for e in eventos2:
+            partidos2.append(formatear_partido(e, obtener_estadisticas(page, e["id"])))
+            page.wait_for_timeout(400)
 
         # Buscar el próximo partido entre los dos equipos (incluye hoy aunque
         # el timestamp ya pasó — mismo criterio que fixture_loader)
@@ -737,8 +746,13 @@ TAREA — respondé SOLO lo siguiente (no te salgas de esto):
 
 REGLAS ESTRICTAS:
 - Usá SOLO los datos del período indicado (no mezcles prefijos).
+- Usá MÍNIMO 4 partidos por equipo para calcular el promedio. Si tenés menos de 4
+  partidos con datos de esa stat, aclaralo ("solo N partidos disponibles").
 - Mostrá las operaciones: (v1+v2+...)/n = X.
-- Máximo 130 palabras. Texto corrido, sin listas ni bullets.
+- LÍNEA DE APUESTA: siempre expresala como número entero + .5 (ej: 9.5, 10.5, 11.5).
+  Para elegirla: tomá tu total esperado, redondeá al entero más cercano y usá ese ± 0.5.
+  Ejemplo: si el total esperado es 12.35 → la línea es Over 11.5 o Under 12.5.
+- Máximo 140 palabras. Texto corrido, sin listas ni bullets.
 - Si algún dato no está disponible en SofaScore, decí exactamente cuál falta.
 - NO uses conocimiento propio. Solo los datos de SofaScore.
 - Terminá siempre con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
