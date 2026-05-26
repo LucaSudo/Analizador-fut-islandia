@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-from datetime import datetime
+from datetime import datetime, date
 
 LIGAS_CONFIG = {
     "Besta deild karla": 188,
@@ -53,6 +53,10 @@ def obtener_temporadas_actuales(page):
 def cargar_proximos_partidos():
     contexto = "=== PRÓXIMOS PARTIDOS POR LIGA ===\n"
     ahora = datetime.now().timestamp()
+    # Inicio del día actual en UTC (para incluir partidos de hoy aunque
+    # ya haya pasado el horario de inicio — SofaScore puede tardar en
+    # actualizar el estado de "notstarted" a "inprogress")
+    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -84,29 +88,42 @@ def cargar_proximos_partidos():
                     except:
                         pass
 
-                # Filtrar: solo futuros o en curso, deduplicar por id, ordenar
+                # Filtrar: en curso, futuros, o de HOY (aunque ya pasó la hora
+                # de inicio — SofaScore puede seguir mostrándolos como notstarted).
+                # No incluir finished/cancelled.
                 vistos = set()
                 eventos = []
                 for e in sorted(candidatos, key=lambda x: x.get("startTimestamp", 0)):
-                    eid = e["id"]
+                    eid  = e["id"]
                     tipo = e.get("status", {}).get("type", "")
                     ts   = e.get("startTimestamp", 0)
-                    es_futuro = tipo == "inprogress" or (tipo == "notstarted" and ts > ahora)
+                    es_hoy    = ts >= inicio_hoy and ts < inicio_hoy + 86400
+                    es_futuro = (
+                        tipo == "inprogress"
+                        or (tipo == "notstarted" and ts > ahora)
+                        or (tipo == "notstarted" and es_hoy)   # partido de hoy aún sin arrancar según SofaScore
+                    )
                     if es_futuro and eid not in vistos:
                         vistos.add(eid)
                         eventos.append(e)
 
                 if eventos:
                     contexto += f"\n{nombre_liga}:\n"
+                    hoy_str = date.today().strftime("%d/%m/%Y")
                     for e in eventos:
                         home = e["homeTeam"]["name"]
                         away = e["awayTeam"]["name"]
-                        ts   = e.get("startTimestamp", "")
-                        fecha_str = (
-                            datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M")
-                            if ts else "por confirmar"
-                        )
-                        contexto += f"  - {home} vs {away} ({fecha_str})\n"
+                        ts_e = e.get("startTimestamp", "")
+                        tipo_e = e.get("status", {}).get("type", "")
+                        if ts_e:
+                            fecha_str = datetime.fromtimestamp(ts_e).strftime("%d/%m/%Y %H:%M")
+                            # Marcar partidos de hoy explícitamente para que el bot no los ignore
+                            if fecha_str.startswith(hoy_str):
+                                fecha_str += " [HOY]"
+                        else:
+                            fecha_str = "por confirmar"
+                        estado_str = " [EN CURSO]" if tipo_e == "inprogress" else ""
+                        contexto += f"  - {home} vs {away} ({fecha_str}{estado_str})\n"
             except:
                 pass
 

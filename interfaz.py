@@ -347,6 +347,19 @@ REGLAS ESTRICTAS:
     en la lista de próximos partidos que aparece más abajo.
 
 ════════════════════════════════════════
+REGLA ABSOLUTA N°9 — PARTIDOS DE HOY
+════════════════════════════════════════
+
+En tu lista de próximos partidos, los que tienen la etiqueta [HOY] corresponden
+al día de hoy. Son los más urgentes.
+
+REGLAS:
+  - Si el usuario pregunta "cuándo juega X" o "el próximo partido de X", buscá
+    primero en los que tienen [HOY]. Si hay uno, ese es el PRÓXIMO partido.
+  - NO saltes al siguiente partido sin mencionar primero el de hoy.
+  - Si el partido dice [EN CURSO], informá que el partido ya comenzó.
+
+════════════════════════════════════════
 LIGAS CON ACCESO A DATOS EN TIEMPO REAL
 ════════════════════════════════════════
 
