@@ -5,7 +5,7 @@ import os
 import re
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import customtkinter as ctk
 from groq import Groq
 from playwright.sync_api import sync_playwright
@@ -145,12 +145,19 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
     """
     Busca los últimos N partidos terminados y calcula promedios EN PYTHON,
     extrayendo el valor correcto (local o visitante) de cada stat.
-    Así el LLM recibe promedios ya calculados, sin riesgo de confundir columnas.
+    Para cada stat se captura tanto el valor propio (FOR) como el del rival (AGAINST),
+    lo que permite calcular líneas más precisas combinando ambos.
     """
-    partidos = obtener_partidos_equipo(page, nombre_equipo, n)
-    acum     = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
-    goles    = []
-    refs     = []
+    partidos     = obtener_partidos_equipo(page, nombre_equipo, n)
+    acum         = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
+    acum_against = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}  # stats del rival
+    goles            = []   # goles anotados total
+    goles_against    = []   # goles recibidos total
+    goles_1h         = []   # goles anotados 1er tiempo
+    goles_against_1h = []   # goles recibidos 1er tiempo
+    goles_2h         = []   # goles anotados 2do tiempo
+    goles_against_2h = []   # goles recibidos 2do tiempo
+    refs = []
 
     for e in partidos:
         home     = e["homeTeam"]["name"]
@@ -158,10 +165,24 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
         es_local = nombre_equipo.lower() in home.lower()
         ronda    = e.get("roundInfo", {}).get("round", "?")
 
+        # Goles totales (anotados y recibidos)
         gh = e.get("homeScore", {}).get("current", None)
         ga = e.get("awayScore", {}).get("current", None)
         if gh is not None and ga is not None:
             goles.append(gh if es_local else ga)
+            goles_against.append(ga if es_local else gh)
+
+        # Goles por período
+        gh1 = e.get("homeScore", {}).get("period1", None)
+        ga1 = e.get("awayScore", {}).get("period1", None)
+        gh2 = e.get("homeScore", {}).get("period2", None)
+        ga2 = e.get("awayScore", {}).get("period2", None)
+        if gh1 is not None and ga1 is not None:
+            goles_1h.append(gh1 if es_local else ga1)
+            goles_against_1h.append(ga1 if es_local else gh1)
+        if gh2 is not None and ga2 is not None:
+            goles_2h.append(gh2 if es_local else ga2)
+            goles_against_2h.append(ga2 if es_local else gh2)
 
         fecha_str = (
             datetime.fromtimestamp(e["startTimestamp"]).strftime("%d/%m/%Y")
@@ -176,35 +197,66 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
         page.wait_for_timeout(800)   # evitar rate-limiting de SofaScore
 
         for periodo, stat_name in _STATS_A_PRECOMPUTAR:
-            clave   = f"{periodo}_{stat_name}"
+            clave = f"{periodo}_{stat_name}"
             if clave not in stats:
                 continue
-            val_str = stats[clave]["home"] if es_local else stats[clave]["away"]
+            col_propia  = "home" if es_local else "away"
+            col_rival   = "away" if es_local else "home"
             try:
-                acum[clave].append(int(str(val_str)))
+                acum[clave].append(int(str(stats[clave][col_propia])))
+            except (ValueError, TypeError):
+                pass
+            try:
+                acum_against[clave].append(int(str(stats[clave][col_rival])))
             except (ValueError, TypeError):
                 pass
 
+    # ── Construir texto de salida ────────────────────────────────────
     lineas = [f"ESTADÍSTICAS DE {nombre_equipo.upper()} (últimos {len(partidos)} partidos terminados):"]
     lineas.append(f"  Partidos: {' | '.join(refs)}")
 
-    if goles:
-        lineas.append(f"  Goles anotados: {goles} → promedio = {sum(goles)/len(goles):.2f}")
+    # Goles totales y por período
+    def _linea_goles(nombre, lista):
+        if lista:
+            lineas.append(f"  {nombre}: {lista} → promedio = {sum(lista)/len(lista):.2f}")
 
+    _linea_goles("Goles anotados",        goles)
+    _linea_goles("Goles recibidos",       goles_against)
+    _linea_goles("Goles anotados 1T",     goles_1h)
+    _linea_goles("Goles recibidos 1T",    goles_against_1h)
+    _linea_goles("Goles anotados 2T",     goles_2h)
+    _linea_goles("Goles recibidos 2T",    goles_against_2h)
+
+    # Resto de stats: FOR inmediatamente seguido de AGAINST para facilitar lectura
     for periodo, stat_name in _STATS_A_PRECOMPUTAR:
-        clave  = f"{periodo}_{stat_name}"
-        vals   = acum[clave]
-        if vals:
-            prom = sum(vals) / len(vals)
-            lineas.append(f"  {clave}: {vals} → promedio = {prom:.2f}")
+        clave = f"{periodo}_{stat_name}"
+        if acum[clave]:
+            prom = sum(acum[clave]) / len(acum[clave])
+            lineas.append(f"  {clave}: {acum[clave]} → promedio = {prom:.2f}")
+        if acum_against[clave]:
+            prom_a = sum(acum_against[clave]) / len(acum_against[clave])
+            lineas.append(f"  {clave} (concedidos): {acum_against[clave]} → promedio = {prom_a:.2f}")
 
+    # ── Construir dict de promedios ──────────────────────────────────
     promedios = {}
-    if goles:
-        promedios["goles"] = sum(goles) / len(goles)
+
+    def _set_prom(key, lista):
+        if lista:
+            promedios[key] = sum(lista) / len(lista)
+
+    _set_prom("goles",            goles)
+    _set_prom("goles_against",    goles_against)
+    _set_prom("goles_1h",         goles_1h)
+    _set_prom("goles_against_1h", goles_against_1h)
+    _set_prom("goles_2h",         goles_2h)
+    _set_prom("goles_against_2h", goles_against_2h)
+
     for periodo, stat_name in _STATS_A_PRECOMPUTAR:
         clave = f"{periodo}_{stat_name}"
         if acum[clave]:
             promedios[clave] = sum(acum[clave]) / len(acum[clave])
+        if acum_against[clave]:
+            promedios[f"{clave}_against"] = sum(acum_against[clave]) / len(acum_against[clave])
 
     return "\n".join(lineas), promedios
 
@@ -225,6 +277,55 @@ def formatear_partido(evento, stats):
         if clave in stats:
             texto += f"    {clave}: {home}={stats[clave]['home']} | {away}={stats[clave]['away']}\n"
     return texto
+
+def buscar_fixture_equipo(nombre_equipo, dias=4):
+    """
+    Busca en SofaScore los próximos partidos de un equipo consultando por fecha.
+    Cubre cualquier competencia (Copa Libertadores, grupos, etc.) sin depender de rondas.
+    """
+    playwright, browser, page = obtener_pagina()
+    try:
+        inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+        resultados = []
+        vistos = set()   # evitar duplicados entre días (mismo partido puede aparecer en 2 fechas UTC)
+        for delta in range(dias):
+            fecha_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
+            try:
+                data = fetch_api(
+                    page,
+                    f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}"
+                )
+                for evento in data.get("events", []):
+                    eid = evento.get("id")
+                    if eid in vistos:
+                        continue
+                    home = evento.get("homeTeam", {}).get("name", "")
+                    away = evento.get("awayTeam", {}).get("name", "")
+                    if nombre_equipo.lower() not in home.lower() and nombre_equipo.lower() not in away.lower():
+                        continue
+                    ts = evento.get("startTimestamp", 0)
+                    status_type = evento.get("status", {}).get("type", "")
+                    es_hoy = ts >= inicio_hoy and ts < inicio_hoy + 86400
+                    if status_type not in ("notstarted", "inprogress") and not es_hoy:
+                        continue
+                    vistos.add(eid)
+                    torneo = (evento.get("tournament", {})
+                                    .get("uniqueTournament", {})
+                                    .get("name", ""))
+                    hora_str = (datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M")
+                                if ts else "horario sin confirmar")
+                    hoy_tag    = " [HOY]"      if es_hoy                       else ""
+                    curso_tag  = " [EN CURSO]" if status_type == "inprogress"  else ""
+                    resultados.append(
+                        f"{home} vs {away} — {torneo} — {hora_str}{hoy_tag}{curso_tag}"
+                    )
+            except:
+                pass
+        return resultados
+    finally:
+        browser.close()
+        playwright.stop()
+
 
 def hacer_analisis_completo(equipo1, equipo2):
     global RONDAS_TOTALES
@@ -299,9 +400,19 @@ def hacer_analisis_completo(equipo1, equipo2):
     for foco_key, stat_clave in _FOCO_A_CLAVE.items():
         v1 = promedios_eq1.get(stat_clave)
         v2 = promedios_eq2.get(stat_clave)
-        if v1 is not None and v2 is not None:
-            total = v1 + v2
-            lineas_python[foco_key] = (total, calcular_linea_over(total))
+        if v1 is None or v2 is None:
+            continue
+        # Fórmula mejorada para todas las stats:
+        # total = (FOR_eq1 + FOR_eq2 + AGAINST_eq1 + AGAINST_eq2) / 2
+        # Combina el ataque propio de cada equipo con la defensa del rival,
+        # dando una estimación más precisa que solo sumar los FOR.
+        a1 = promedios_eq1.get(f"{stat_clave}_against")
+        a2 = promedios_eq2.get(f"{stat_clave}_against")
+        if a1 is not None and a2 is not None:
+            total = (v1 + v2 + a1 + a2) / 2
+        else:
+            total = v1 + v2   # fallback si no hay datos de concedidos
+        lineas_python[foco_key] = (total, calcular_linea_over(total))
 
     # Agregar al contexto las líneas ya calculadas
     lineas_ctx = []
@@ -361,15 +472,17 @@ REGLA ABSOLUTA N°2 — QUÉ RESPONDÉS SIN ACTION:ANALIZAR
 Todo lo que no sea un pedido explícito de análisis/predicción/apuesta se responde DIRECTAMENTE con texto, sin ninguna ACTION.
 
 Esto incluye sin excepciones:
-  - "¿Cuándo juega X?" → respondés solo la fecha y hora. Nada más.
-  - "¿A qué hora juega X?" → respondés solo la hora. Nada más.
-  - "¿Cuál es el próximo partido de X?" → nombrás el partido. Nada más.
-  - "¿Dónde juega X?" → respondés el estadio o ciudad. Nada más.
-  - "¿Quién es el goleador de X?" → respondés el dato. Nada más.
+  - "¿Cuándo juega X?" → buscás en tu lista de fixtures. Si está → dás la fecha y hora. Si NO está → decís "No tengo ese partido en mis fixtures, verificalo en SofaScore."
+  - "¿A qué hora juega X?" → buscás en fixtures. Si está → dás la hora exacta. Si NO está → decís "No tengo el horario, verificalo en SofaScore."
+  - "¿Cuál es el próximo partido de X?" → buscás en fixtures. Si está → lo nombrás. Si NO está → decís que no lo tenés cargado.
+  - "¿Dónde juega X?" → información general. Nada más.
+  - "¿Quién es el goleador de X?" → información general. Nada más.
   - "Contame sobre el equipo X" → información general. Nada más.
-  - "¿Viste que hoy juega X?" → confirmás el partido y el horario. Nada más.
-  - "¿Sabés que juega X hoy?" → confirmás el partido y el horario. Nada más.
-  - "¿Viste que juega X contra Y?" → confirmás el partido. Nada más.
+  - "¿Viste que hoy juega X?" / "¿Sabés que juega X hoy?" / "¿Sabés que X juega contra Y?" →
+      BUSCÁS en tu lista de fixtures si ese equipo aparece.
+      Si SÍ está → confirmás con los datos exactos del fixture (rival, fecha, hora).
+      Si NO está → respondés: "No lo veo en mis fixtures actuales, verificalo en SofaScore."
+      NUNCA inventes el rival, la hora ni la competición desde tu memoria de entrenamiento.
   - Cualquier pregunta informativa, histórica o general → respondés directo. Nada más.
 
 NINGUNO de estos casos activa ACTION:ANALIZAR, aunque mencionen un partido, un equipo o un resultado. Que el usuario mencione un partido NO es un pedido de análisis.
@@ -543,6 +656,21 @@ Tenés acceso a datos en tiempo real de:
   - Copa Libertadores (Sudamérica)
   - Copa Sudamericana (Sudamérica)
   - Saudi Pro League (Arabia Saudita)
+
+════════════════════════════════════════
+REGLA ABSOLUTA N°10 — BUSCAR FIXTURE EN TIEMPO REAL
+════════════════════════════════════════
+
+Cuando el usuario pregunte contra quién juega un equipo, cuándo juega, o a qué hora,
+y ese equipo NO aparece en tu lista de fixtures (o no estás seguro):
+→ Emití al FINAL de tu respuesta: ACTION:BUSCAR_FIXTURE|nombre_del_equipo
+
+Ejemplos que activan ACTION:BUSCAR_FIXTURE:
+  - "¿Contra quién juega Coquimbo hoy?" → ACTION:BUSCAR_FIXTURE|Coquimbo Unido
+  - "¿A qué hora juega Nacional?" → ACTION:BUSCAR_FIXTURE|Club Nacional de Montevideo
+  - "¿Cuándo juega River?" → ACTION:BUSCAR_FIXTURE|River Plate
+
+NUNCA inventes rival, hora ni competición. Si no lo ves en fixtures → ACTION:BUSCAR_FIXTURE.
 """
 # ── Detección Python de pedidos de predicción ────────────────────
 # No confiar solo en el LLM para decidir cuándo usar ACTION:ANALIZAR.
@@ -564,6 +692,67 @@ _PRED_STAT_RE = re.compile(
 def _es_prediccion(msg: str) -> bool:
     m = msg.lower()
     return any(kw in m for kw in _PRED_KEYWORDS) or bool(_PRED_STAT_RE.search(msg))
+
+# Detectar consultas de horario/rival — para inyectar fixtures y evitar que el LLM invente
+_SCHEDULE_RE = re.compile(
+    r'contra\s+qui[eé]n|qui[eé]n\s+juega|cu[aá]ndo\s+juega|a\s+qu[eé]\s+hora|'
+    r'el\s+pr[oó]ximo\s+partido|hoy\s+juega|juega\s+hoy|'
+    r'sab[eé]s\s+que.{0,40}juega|viste\s+que.{0,40}juega',
+    re.IGNORECASE
+)
+
+def _es_consulta_schedule(msg: str) -> bool:
+    return bool(_SCHEDULE_RE.search(msg))
+
+# Palabras a ignorar para extraer el nombre del equipo de una consulta de horario
+_SCHED_STOPWORDS = {
+    'contra', 'quien', 'quién', 'juega', 'juegan', 'hoy', 'cuando', 'cuándo',
+    'hora', 'que', 'qué', 'a', 'el', 'la', 'los', 'las', 'de', 'del',
+    'en', 'por', 'para', 'es', 'son', 'sabe', 'sabes', 'sabias', 'sabías',
+    'viste', 'me', 'te', 'lo', 'un', 'una', 'al', 'con', 'si', 'sí', 'no',
+    'ya', 'proximo', 'próximo', 'partido', 'siguiente', 'cual', 'cuál',
+    'y', 'e', 'o', 'u',  # conjunciones
+}
+
+def _extraer_equipo_schedule(msg: str) -> str | None:
+    """
+    Elimina palabras vacías y devuelve lo que queda como nombre de equipo.
+    Ej: 'Contra quien juega coquimbo hoy' → 'coquimbo'
+        'A que hora juega River Plate'   → 'River Plate'
+    """
+    palabras = re.sub(r'[?!.,]', '', msg.strip()).split()
+    resto = [p for p in palabras if p.lower() not in _SCHED_STOPWORDS]
+    return ' '.join(resto).strip() or None
+
+def _extraer_equipo_de_historial() -> str | None:
+    """
+    Busca en el historial reciente el equipo más relevante para un follow-up
+    como 'Juega hoy?' o 'A que hora?'.
+    Prioridad:
+      1. Mensajes RECIENTES del USUARIO (excluye el actual) que mencionen un equipo.
+      2. Fallback: último mensaje del BOT con formato 'Próximos partidos de X:'.
+    """
+    msgs = historial[-10:]  # ventana de contexto
+
+    # 1. Buscar en mensajes del usuario (de más reciente a más viejo), excluir el último
+    msgs_usuario = [m for m in msgs if m["role"] == "user"]
+    for msg in reversed(msgs_usuario[:-1] if len(msgs_usuario) > 1 else []):
+        equipo = _extraer_equipo_schedule(msg["content"])
+        # Filtrar ruido: si tiene más de 3 palabras probablemente no es un equipo
+        if equipo and len(equipo.split()) <= 3:
+            return equipo
+
+    # 2. Fallback: último mensaje del bot con fixture listado
+    for msg in reversed(msgs):
+        if msg["role"] == "assistant":
+            content = msg["content"]
+            m = re.search(r'[Pp]r[oó]ximos\s+partidos\s+de\s+([^:\n]+):', content)
+            if m:
+                return m.group(1).strip()
+            m = re.search(r'^([A-ZÁÉÍÓÚa-záéíóú][^\n]{2,40}?)\s+juega\s+contra', content)
+            if m:
+                return m.group(1).strip()
+    return None
 
 def _obtener_fixtures_texto() -> str:
     """
@@ -624,91 +813,108 @@ _MSG_SIN_DATOS = (
 _FOCO_PROMPT = {
     "completo": (
         "Hacé un resumen con las stats principales: "
-        "mencioná el promedio de goles de cada equipo (y si suelen anotar ambos), "
-        "el total de corners esperado, tarjetas amarillas esperadas y faltas. "
-        "Para cada stat leé el 'promedio' de la sección ESTADÍSTICAS y sumá los dos. "
+        "mencioná el promedio de goles anotados y recibidos de cada equipo, "
+        "el total combinado de corners esperado, tarjetas amarillas esperadas y faltas. "
+        "Para cada stat usá el total de LÍNEAS PRE-CALCULADAS (ya combina anotados y concedidos). "
         "Usá las líneas de LÍNEAS PRE-CALCULADAS para las recomendaciones."
     ),
     "goles": (
-        "Leé el promedio de 'Goles anotados' de cada equipo en la sección ESTADÍSTICAS. "
-        "Mostrá: equipo1 promedio X, equipo2 promedio Y, total X+Y. "
+        "Leé 'Goles anotados' y 'Goles recibidos' de cada equipo en ESTADÍSTICAS. "
+        "Mostrá: equipo1 anota X recibe Z, equipo2 anota Y recibe W. "
         "Indicá también si suelen anotar ambos. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'goles' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners": (
-        "Leé el promedio de ALL_Corner kicks de cada equipo en la sección ESTADÍSTICAS. "
-        "Mostrá: equipo1 promedio X, equipo2 promedio Y, total X+Y. "
+        "Leé ALL_Corner kicks y ALL_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá: equipo1 genera X concede Z, equipo2 genera Y concede W. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente, no lo sumes vos. "
         "Usá la línea 'corners' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners_1h": (
-        "Leé el promedio de 1ST_Corner kicks de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé 1ST_Corner kicks y 1ST_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de generados y concedidos por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'corners_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "corners_2h": (
-        "Leé el promedio de 2ND_Corner kicks de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé 2ND_Corner kicks y 2ND_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de generados y concedidos por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'corners_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas": (
-        "Leé el promedio de ALL_Yellow cards de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé ALL_Yellow cards y ALL_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de cometidas y recibidas por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'tarjetas_amarillas' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas_1h": (
-        "Leé el promedio de 1ST_Yellow cards de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé 1ST_Yellow cards y 1ST_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de cometidas y recibidas por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'tarjetas_amarillas_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_amarillas_2h": (
-        "Leé el promedio de 2ND_Yellow cards de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé 2ND_Yellow cards y 2ND_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de cometidas y recibidas por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'tarjetas_amarillas_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "tarjetas_rojas": (
-        "Leé el promedio de ALL_Red cards de cada equipo en ESTADÍSTICAS. "
-        "Indicá en cuántos partidos hubo roja y si es probable. "
+        "Leé ALL_Red cards y ALL_Red cards (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Indicá en cuántos partidos hubo roja (propia o recibida) y si es probable. "
         "Usá la línea 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS si existe; "
         "si no, recomendá Sí/No según la frecuencia."
     ),
     "tarjetas_rojas_1h": (
-        "Leé el promedio de 1ST_Red cards. Frecuencia de rojas en 1er tiempo. "
+        "Leé 1ST_Red cards y 1ST_Red cards (concedidos). Frecuencia de rojas en 1er tiempo. "
         "Recomendá Sí/No según la frecuencia observada."
     ),
     "tarjetas_rojas_2h": (
-        "Leé el promedio de 2ND_Red cards. Frecuencia de rojas en 2do tiempo. "
+        "Leé 2ND_Red cards y 2ND_Red cards (concedidos). Frecuencia de rojas en 2do tiempo. "
         "Recomendá Sí/No según la frecuencia observada."
     ),
     "remates": (
-        "Leé el promedio de ALL_Shots on target de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé ALL_Shots on target y ALL_Shots on target (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de generados y recibidos por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'remates' de LÍNEAS PRE-CALCULADAS."
     ),
     "remates_1h": (
-        "Leé el promedio de 1ST_Shots on target. Mostrá promedios y total. "
+        "Leé 1ST_Shots on target y 1ST_Shots on target (concedidos). "
+        "Mostrá promedios de generados y recibidos. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'remates_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "remates_2h": (
-        "Leé el promedio de 2ND_Shots on target. Mostrá promedios y total. "
+        "Leé 2ND_Shots on target y 2ND_Shots on target (concedidos). "
+        "Mostrá promedios de generados y recibidos. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'remates_2h' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas": (
-        "Leé el promedio de ALL_Fouls de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios individuales y el total (suma). "
+        "Leé ALL_Fouls y ALL_Fouls (concedidos) de cada equipo en ESTADÍSTICAS. "
+        "Mostrá los promedios de cometidas y recibidas por equipo. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'faltas' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas_1h": (
-        "Leé el promedio de 1ST_Fouls. Mostrá promedios y total. "
+        "Leé 1ST_Fouls y 1ST_Fouls (concedidos). "
+        "Mostrá promedios de cometidas y recibidas. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'faltas_1h' de LÍNEAS PRE-CALCULADAS."
     ),
     "faltas_2h": (
-        "Leé el promedio de 2ND_Fouls. Mostrá promedios y total. "
+        "Leé 2ND_Fouls y 2ND_Fouls (concedidos). "
+        "Mostrá promedios de cometidas y recibidas. "
+        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
         "Usá la línea 'faltas_2h' de LÍNEAS PRE-CALCULADAS."
     ),
 }
 
 def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False,
-                es_confirmacion_partido=False):
+                es_confirmacion_partido=False, forzar_fixtures=False):
     historial.append({"role": "user", "content": mensaje})
 
     contexto_memoria = generar_contexto_memoria()
@@ -724,7 +930,23 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
             "content": f"DATOS REALES PARA EL ANÁLISIS:\n{datos_sofascore}"
         })
 
-    if forzar_action and historial:
+    if forzar_fixtures and historial and not forzar_action:
+        fixtures_ctx = _obtener_fixtures_texto()
+        mensajes += historial[:-1]
+        inyeccion = (
+            "⚠️ El usuario pregunta sobre horario o rival de un equipo. "
+            "Buscá ese equipo ÚNICAMENTE en esta lista:\n\n"
+            f"{fixtures_ctx}\n\n"
+            "REGLAS ESTRICTAS:\n"
+            "- Si el equipo ESTÁ → respondé con los datos exactos (rival, fecha, hora) de la lista.\n"
+            "- Si NO está → respondé: 'No lo veo en mis fixtures actuales. "
+            "Podés verificarlo en SofaScore.'\n"
+            "- NUNCA uses tu memoria de entrenamiento para datos de partidos.\n"
+            "- NUNCA menciones [HOY], [EN CURSO] ni ningún formato interno en tu respuesta."
+        )
+        mensajes.append({"role": "system", "content": inyeccion})
+        mensajes.append(historial[-1])
+    elif forzar_action and historial:
         # Inyectar recordatorio urgente justo ANTES del último mensaje del usuario.
         # Dos modos distintos según si el usuario está CONFIRMANDO un partido (tras
         # una pregunta de aclaración previa) o haciendo una NUEVA pregunta de predicción.
@@ -888,8 +1110,69 @@ class App(ctk.CTk):
             # (ej: bot preguntó "¿De qué partido hablás?" y el usuario dice "el de KR")
             es_confirmacion = _es_respuesta_a_aclaracion_partido()
             es_pred = _es_prediccion(mensaje) or es_confirmacion
+            es_schedule = _es_consulta_schedule(mensaje)
+
+            # ── Búsqueda directa de fixtures en SofaScore (sin pasar por el LLM) ──
+            # Para consultas de horario/rival siempre vamos directo a SofaScore:
+            # así la respuesta SIEMPRE incluye rival + hora real, sin depender del LLM.
+            if es_schedule and not es_pred:
+                equipo_extraido = _extraer_equipo_schedule(mensaje)
+                # Si el usuario no mencionó equipo (ej: "A que hora"), buscarlo en historial
+                if not equipo_extraido:
+                    equipo_extraido = _extraer_equipo_de_historial()
+                if equipo_extraido:
+                    historial.append({"role": "user", "content": mensaje})
+                    self.set_status(f"🔍 Buscando partidos de {equipo_extraido} en SofaScore...")
+                    partidos_encontrados = buscar_fixture_equipo(equipo_extraido)
+                    if partidos_encontrados:
+                        lineas = []
+                        for f in partidos_encontrados:
+                            es_hoy_f   = "[HOY]"      in f
+                            en_curso_f = "[EN CURSO]" in f
+                            f_limpio   = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
+                            sufijo     = " (hoy)"       if es_hoy_f   else ""
+                            sufijo    += " — en curso"  if en_curso_f else ""
+                            lineas.append(f"• {f_limpio}{sufijo}")
+                        texto = f"Próximos partidos de {equipo_extraido}:\n" + "\n".join(lineas)
+                    else:
+                        texto = f"No encontré próximos partidos de {equipo_extraido} en SofaScore."
+                    historial.append({"role": "assistant", "content": texto})
+                    self.agregar_mensaje("🤖", texto)
+                    return  # finally re-habilita los botones
+
             respuesta = chat_con_ia(mensaje, forzar_action=es_pred,
-                                    es_confirmacion_partido=es_confirmacion)
+                                    es_confirmacion_partido=es_confirmacion,
+                                    forzar_fixtures=es_schedule and not es_pred)
+            # Limpiar tags internas que nunca deben llegar al usuario
+            respuesta = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', respuesta).strip()
+
+            # ── Caso 0: la respuesta contiene ACTION:BUSCAR_FIXTURE ──────────
+            if "ACTION:BUSCAR_FIXTURE|" in respuesta:
+                match_fix = re.search(r'ACTION:BUSCAR_FIXTURE\|(.*?)(?:\n|$)', respuesta)
+                equipo_buscar = match_fix.group(1).strip() if match_fix else None
+                if equipo_buscar:
+                    self.set_status(f"🔍 Buscando partidos de {equipo_buscar} en SofaScore...")
+                    fixtures = buscar_fixture_equipo(equipo_buscar)
+                    if fixtures:
+                        # Limpiar tags internas antes de mostrar
+                        lineas = []
+                        for f in fixtures:
+                            f_limpio = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
+                            # Detectar si es hoy o en curso para agregarlo en lenguaje natural
+                            es_hoy_fix   = "[HOY]"      in f
+                            en_curso_fix = "[EN CURSO]" in f
+                            sufijo = " (hoy)" if es_hoy_fix else ""
+                            sufijo += " — en curso" if en_curso_fix else ""
+                            lineas.append(f"• {f_limpio}{sufijo}")
+                        texto = f"Próximos partidos de {equipo_buscar}:\n" + "\n".join(lineas)
+                    else:
+                        texto = f"No encontré próximos partidos de {equipo_buscar} en SofaScore."
+                    # Limpiar historial para no recordar la ACTION
+                    if historial and historial[-1]["role"] == "assistant":
+                        historial[-1]["content"] = texto
+                    self.agregar_mensaje("🤖", texto)
+                self.set_status("")
+                return
 
             # ── Caso A: la respuesta contiene ACTION:ANALIZAR ─────────────────
             if "ACTION:ANALIZAR|" in respuesta:

@@ -467,6 +467,42 @@
       "temporada_id": 87760,
       "resultado_real": null,
       "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 20:29",
+      "equipo1": "Nacional",
+      "equipo2": "Coquimbo Unido",
+      "foco": "completo",
+      "prediccion": "Nacional promedia 1.20 goles y Coquimbo Unido 1.60. Corners esperados 11.40, línea Over 10.5. Tarjetas amarillas 4.20, línea Over 3.5. Faltas 22.40, línea Over 21.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15832787,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 21:06",
+      "equipo1": "Nacional",
+      "equipo2": "Coquimbo Unido",
+      "foco": "corners",
+      "prediccion": "Nacional genera 5.60 corners y concede 7.00, Coquimbo Unido genera 5.80 corners y concede 5.40. Total combinado 11.40, línea Over 11.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15832787,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-26 21:09",
+      "equipo1": "Universitario de Deportes",
+      "equipo2": "Deportes Tolima",
+      "foco": "corners",
+      "prediccion": "Universitario de Deportes genera 5.40 corners y concede 5.60, Deportes Tolima genera 5.40 corners y concede 4.20. Total combinado 10.30, línea Over 9.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15832788,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
     }
   ],
   "notas_equipos": {},
