@@ -725,6 +725,35 @@ Ejemplos que activan ACTION:BUSCAR_FIXTURE:
   - "¿Cuándo juega River?" → ACTION:BUSCAR_FIXTURE|River Plate
 
 NUNCA inventes rival, hora ni competición. Si no lo ves en fixtures → ACTION:BUSCAR_FIXTURE.
+
+════════════════════════════════════════
+REGLA ABSOLUTA N°11 — APUESTAS COMBINADAS
+════════════════════════════════════════
+
+Cuando el usuario pida una "apuesta combinada", "combinada", "acumuladora", "combina X con Y"
+o "armame una combinada":
+
+CASO A — El usuario NO especifica equipos ni partidos (ej: "armame una combinada", "quiero una combinada segura"):
+→ Escribís UNA frase breve ("Voy a buscar la mejor combinada disponible en los fixtures.") y al final:
+  ACTION:COMBINADA_AUTO
+
+CASO B — El usuario especifica UN partido con 1 o más stats (ej: "combiname corners + goles de Valur vs KR"):
+→ Al final emitís:
+  ACTION:COMBINADA|equipo_local|equipo_visitante|stat1,stat2|liga
+  Si no especificó stats → usá "auto":
+  ACTION:COMBINADA|equipo_local|equipo_visitante|auto|liga
+
+CASO C — El usuario especifica VARIOS partidos (ej: "corners de Valur vs KR y goles de Breidablik vs Víkingur"):
+→ Cada pick separado por ";":
+  ACTION:COMBINADA|eq1a|eq2a|stat_a|liga_a;eq1b|eq2b|stat_b|liga_b
+
+Stats válidas: corners, goles, tarjetas_amarillas, tarjetas_rojas, remates, faltas
+(y variantes _1h / _2h si pide por tiempo)
+
+REGLAS:
+- ACTION:COMBINADA o ACTION:COMBINADA_AUTO va SIEMPRE AL FINAL del mensaje.
+- NUNCA mezcles ACTION:COMBINADA con ACTION:ANALIZAR.
+- Si el usuario pide una combinada auto pero también menciona un partido específico → usá CASO B o C.
 """
 # ── Detección Python de pedidos de predicción ────────────────────
 # No confiar solo en el LLM para decidir cuándo usar ACTION:ANALIZAR.
@@ -736,6 +765,9 @@ _PRED_KEYWORDS = [
     "quién gana", "quien gana",
     "prediccion", "predicción", "pronostico", "pronóstico",
     "analizá", "analiza el partido",
+    # combinadas
+    "combinada", "acumuladora", "combina ", "armame", "arma una",
+    "dame una combinada", "quiero una combinada",
 ]
 # "cuántos/cuántas" solo es predicción cuando va seguido de una stat de partido
 _PRED_STAT_RE = re.compile(
@@ -987,6 +1019,281 @@ _FOCO_PROMPT = {
         "Mencioná el nivel de confianza entre paréntesis."
     ),
 }
+
+# ── Apuestas combinadas ───────────────────────────────────────────
+
+# Stats que se evalúan al armar una combinada (en orden de popularidad para apuestas)
+_STATS_COMBINADA = [
+    ("corners",            "ALL_Corner kicks"),
+    ("goles",              "goles"),
+    ("tarjetas_amarillas", "ALL_Yellow cards"),
+    ("faltas",             "ALL_Fouls"),
+    ("remates",            "ALL_Shots on target"),
+]
+
+# Orden numérico de confianza (menor = mejor)
+_ORDEN_CONFIANZA = {
+    "Muy alta 🟢": 0,
+    "Alta 🟢":     1,
+    "Media 🟡":    2,
+    "Baja 🔴":     3,
+}
+
+# Nombres legibles de stats para el output
+_STAT_NOMBRE_ES = {
+    "corners":            "Corners totales",
+    "corners_1h":         "Corners 1er tiempo",
+    "corners_2h":         "Corners 2do tiempo",
+    "goles":              "Goles totales",
+    "tarjetas_amarillas": "Tarjetas amarillas",
+    "tarjetas_amarillas_1h": "Amarillas 1er tiempo",
+    "tarjetas_amarillas_2h": "Amarillas 2do tiempo",
+    "tarjetas_rojas":     "Tarjetas rojas",
+    "faltas":             "Faltas totales",
+    "faltas_1h":          "Faltas 1er tiempo",
+    "faltas_2h":          "Faltas 2do tiempo",
+    "remates":            "Remates al arco",
+    "remates_1h":         "Remates al arco 1T",
+    "remates_2h":         "Remates al arco 2T",
+}
+
+# Mapa completo de stats para combinada (incluye variantes _1h/_2h)
+_STATS_COMBINADA_MAPA = {
+    "corners":               "ALL_Corner kicks",
+    "corners_1h":            "1ST_Corner kicks",
+    "corners_2h":            "2ND_Corner kicks",
+    "goles":                 "goles",
+    "tarjetas_amarillas":    "ALL_Yellow cards",
+    "tarjetas_amarillas_1h": "1ST_Yellow cards",
+    "tarjetas_amarillas_2h": "2ND_Yellow cards",
+    "tarjetas_rojas":        "ALL_Red cards",
+    "faltas":                "ALL_Fouls",
+    "faltas_1h":             "1ST_Fouls",
+    "faltas_2h":             "2ND_Fouls",
+    "remates":               "ALL_Shots on target",
+    "remates_1h":            "1ST_Shots on target",
+    "remates_2h":            "2ND_Shots on target",
+}
+
+
+def _parsear_partidos_fixtures() -> list[tuple]:
+    """
+    Extrae todos los partidos del SYSTEM_PROMPT (sección PRÓXIMOS PARTIDOS).
+    Retorna [(home, away, liga_nombre, es_prioritario), ...]
+    ordenados: HOY / EN CURSO primero, luego el resto.
+    """
+    fixtures_texto = _obtener_fixtures_texto()
+    if not fixtures_texto:
+        return []
+
+    resultados = []
+    liga_actual = ""
+
+    for linea in fixtures_texto.splitlines():
+        linea_strip = linea.strip()
+
+        # Detectar encabezado de liga: "Besta deild karla:" (sin guión inicial)
+        if linea_strip.endswith(":") and not linea_strip.startswith("-") and "===" not in linea_strip:
+            candidato = linea_strip[:-1].strip()
+            if candidato:
+                liga_actual = candidato
+            continue
+
+        # Detectar partido: "  - Home vs Away (fecha...)"
+        m = re.search(r'-\s+(.+?)\s+vs\s+(.+?)\s+\(', linea)
+        if m and liga_actual:
+            home = m.group(1).strip()
+            away = m.group(2).strip()
+            es_prioritario = "[HOY]" in linea or "[EN CURSO]" in linea
+            resultados.append((home, away, liga_actual, es_prioritario))
+
+    # HOY / EN CURSO primero
+    resultados.sort(key=lambda x: 0 if x[3] else 1)
+    return resultados
+
+
+def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
+                             stats_keys: list | None = None) -> list[dict]:
+    """
+    Descarga stats de eq1 y eq2 y calcula candidatos de apuesta.
+    stats_keys: lista de claves de _STATS_COMBINADA_MAPA a evaluar.
+                None = evaluar las 5 stats principales (_STATS_COMBINADA).
+    Retorna lista de dicts con toda la info de cada pick.
+    """
+    global LIGA_ID, TEMPORADA_ID, RONDAS_TOTALES
+
+    liga = next((v for k, v in LIGAS.items() if liga_nombre in k or k in liga_nombre), None)
+    if not liga:
+        return []
+
+    LIGA_ID        = liga["id"]
+    TEMPORADA_ID   = liga["temporada"]
+    RONDAS_TOTALES = liga["rondas"]
+
+    # Actualizar ronda real
+    try:
+        rd = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/"
+                               f"{LIGA_ID}/season/{TEMPORADA_ID}/rounds")
+        rl = rd.get("rounds", [])
+        RONDAS_TOTALES = (
+            rd.get("currentRound", {}).get("round")
+            or (rl[-1].get("round", RONDAS_TOTALES) if rl else RONDAS_TOTALES)
+        )
+    except Exception:
+        pass
+
+    try:
+        _, prom1 = precomputar_stats_equipo(sesion, eq1)
+        _, prom2 = precomputar_stats_equipo(sesion, eq2)
+    except Exception:
+        return []
+
+    # Determinar qué stats evaluar
+    if stats_keys is None:
+        stats_a_evaluar = _STATS_COMBINADA          # lista de (key, clave_sofascore)
+    else:
+        stats_a_evaluar = [
+            (k, _STATS_COMBINADA_MAPA[k])
+            for k in stats_keys
+            if k in _STATS_COMBINADA_MAPA
+        ]
+
+    picks = []
+    for stat_key, stat_clave in stats_a_evaluar:
+        v1 = prom1.get(stat_clave)
+        v2 = prom2.get(stat_clave)
+        if v1 is None or v2 is None:
+            continue
+        a1 = prom1.get(f"{stat_clave}_against")
+        a2 = prom2.get(f"{stat_clave}_against")
+        total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
+
+        linea_directa, linea_segura, confianza = calcular_lineas_y_confianza(total)
+
+        picks.append({
+            "partido":       f"{eq1} vs {eq2}",
+            "equipo1":       eq1,
+            "equipo2":       eq2,
+            "liga":          liga_nombre,
+            "stat":          stat_key,
+            "total":         total,
+            "linea_directa": linea_directa,
+            "linea_segura":  linea_segura,
+            "confianza":     confianza,
+        })
+
+    return picks
+
+
+def hacer_combinada_auto(n_picks: int = 2, progress_cb=None) -> list[dict]:
+    """
+    Escanea los fixtures disponibles, calcula picks para cada partido,
+    y retorna los N mejores ordenados por confianza.
+    Prefiere picks de partidos distintos para diversificar.
+    """
+    partidos = _parsear_partidos_fixtures()
+    if not partidos:
+        return []
+
+    sesion      = _nueva_sesion()
+    todos_picks = []
+
+    for i, (home, away, liga_nombre, _) in enumerate(partidos[:4]):   # máx 4 partidos
+        if progress_cb:
+            progress_cb(f"🔍 Analizando partido {i+1}/{min(len(partidos), 4)}: {home} vs {away}...")
+        picks = _calcular_picks_partido(sesion, home, away, liga_nombre)
+        todos_picks.extend(picks)
+
+    if not todos_picks:
+        return []
+
+    # Ordenar por confianza (mejor primero)
+    todos_picks.sort(key=lambda x: _ORDEN_CONFIANZA.get(x["confianza"], 99))
+
+    # Seleccionar diversificando: preferir partidos distintos
+    picks_finales     = []
+    partidos_usados   = set()
+    stats_por_partido = {}   # partido → [stats ya elegidas]
+
+    # 1ª pasada: el mejor pick de cada partido distinto
+    for pick in todos_picks:
+        p = pick["partido"]
+        if p not in partidos_usados:
+            picks_finales.append(pick)
+            partidos_usados.add(p)
+            stats_por_partido[p] = [pick["stat"]]
+        if len(picks_finales) >= n_picks:
+            break
+
+    # 2ª pasada: si faltan, agregar más picks (stat diferente del mismo partido)
+    if len(picks_finales) < n_picks:
+        for pick in todos_picks:
+            if pick in picks_finales:
+                continue
+            p, s = pick["partido"], pick["stat"]
+            if s not in stats_por_partido.get(p, []):
+                picks_finales.append(pick)
+                stats_por_partido.setdefault(p, []).append(s)
+            if len(picks_finales) >= n_picks:
+                break
+
+    return picks_finales[:max(n_picks, 2)]
+
+
+def hacer_combinada_especifica(partidos_picks: list[tuple]) -> list[dict]:
+    """
+    partidos_picks: [(eq1, eq2, [stat1, stat2, ...], liga_nombre), ...]
+    Analiza cada partido con las stats pedidas. Si stats=['auto'], evalúa las 5 principales.
+    Retorna todos los picks ordenados por confianza.
+    """
+    sesion      = _nueva_sesion()
+    todos_picks = []
+
+    for eq1, eq2, stats_pedidas, liga_nombre in partidos_picks:
+        keys = None if stats_pedidas == ["auto"] else stats_pedidas
+        picks = _calcular_picks_partido(sesion, eq1, eq2, liga_nombre, keys)
+        todos_picks.extend(picks)
+
+    todos_picks.sort(key=lambda x: _ORDEN_CONFIANZA.get(x["confianza"], 99))
+    return todos_picks
+
+
+def _formatear_combinada(picks: list[dict]) -> str:
+    """
+    Genera el texto final de la combinada para mostrar al usuario.
+    """
+    if not picks:
+        return (
+            "No encontré picks con suficiente confianza para armar una combinada. "
+            "Probá pedir una combinada específica indicando el partido y las stats."
+        )
+
+    # Confianza combinada = la peor de las selecciones (eslabón más débil)
+    peor_idx = max(_ORDEN_CONFIANZA.get(p["confianza"], 99) for p in picks)
+    confianza_combinada = next(
+        (k for k, v in _ORDEN_CONFIANZA.items() if v == peor_idx),
+        "Desconocida"
+    )
+
+    lineas = [f"🎯 APUESTA COMBINADA ({len(picks)} selecciones)\n"]
+
+    for i, pick in enumerate(picks, 1):
+        stat_nombre = _STAT_NOMBRE_ES.get(pick["stat"], pick["stat"])
+        lineas.append(
+            f"Selección {i}: {pick['linea_segura']} {stat_nombre}\n"
+            f"  {pick['equipo1']} vs {pick['equipo2']} — {pick['liga']}\n"
+            f"  Total esperado: {pick['total']:.2f} | Confianza: {pick['confianza']}\n"
+            f"  (línea directa: {pick['linea_directa']})"
+        )
+
+    lineas.append(f"\n📊 Confianza combinada: {confianza_combinada} "
+                  f"(la más baja de las {len(picks)} selecciones)")
+    lineas.append("⚠️ Todas las selecciones deben entrar para ganar. "
+                  "A mayor número de picks, mayor riesgo acumulado.")
+    lineas.append("⚠️ Solo una recomendación estadística. Los resultados pueden variar.")
+
+    return "\n".join(lineas)
+
 
 def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=False,
                 es_confirmacion_partido=False, forzar_fixtures=False):
@@ -1250,6 +1557,53 @@ class App(ctk.CTk):
                     self.agregar_mensaje("🤖", texto)
                 self.set_status("")
                 return
+
+            # ── Caso A': ACTION:COMBINADA_AUTO ───────────────────────────────
+            if "ACTION:COMBINADA_AUTO" in respuesta:
+                self.set_status("🔍 Buscando la mejor combinada en los fixtures...")
+                picks = hacer_combinada_auto(
+                    n_picks=2,
+                    progress_cb=self.set_status
+                )
+                texto = _formatear_combinada(picks)
+                if historial and historial[-1]["role"] == "assistant":
+                    historial[-1]["content"] = texto
+                self.agregar_mensaje("🤖", texto)
+                self.set_status("✅ Listo")
+                return
+
+            # ── Caso A'': ACTION:COMBINADA|... (específica o multi-partido) ────
+            if "ACTION:COMBINADA|" in respuesta:
+                m_comb = re.search(r'ACTION:COMBINADA\|(.*?)(?:\n|$)', respuesta)
+                if m_comb:
+                    raw = m_comb.group(1).strip()
+                    partidos_picks = []
+                    for pick_str in raw.split(";"):
+                        partes = [p.strip() for p in pick_str.split("|")]
+                        if len(partes) >= 4:
+                            eq1        = partes[0]
+                            eq2        = partes[1]
+                            stats_raw  = partes[2]
+                            liga_n     = partes[3]
+                            stats_list = (
+                                ["auto"] if stats_raw.lower() == "auto"
+                                else [s.strip() for s in stats_raw.split(",")]
+                            )
+                            partidos_picks.append((eq1, eq2, stats_list, liga_n))
+
+                    if partidos_picks:
+                        n_total = len(partidos_picks)
+                        self.set_status(
+                            f"🔄 Analizando combinada ({n_total} partido"
+                            f"{'s' if n_total > 1 else ''})..."
+                        )
+                        picks = hacer_combinada_especifica(partidos_picks)
+                        texto = _formatear_combinada(picks)
+                        if historial and historial[-1]["role"] == "assistant":
+                            historial[-1]["content"] = texto
+                        self.agregar_mensaje("🤖", texto)
+                        self.set_status("✅ Listo")
+                        return
 
             # ── Caso A: la respuesta contiene ACTION:ANALIZAR ─────────────────
             if "ACTION:ANALIZAR|" in respuesta:
