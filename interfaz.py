@@ -120,9 +120,16 @@ def calcular_lineas_y_confianza(total_esperado: float) -> tuple:
         linea_directa -= 1.0
 
     # ── Línea segura: primer X.5 con margen ≥ 1.0 ─────────────────
+    # Floor en 0.5 (mínima línea sensata). Si el total es tan bajo que
+    # no se puede alcanzar margen ≥ 1.0, la línea segura = directa y
+    # la confianza será Baja (indica que no hay apuesta conservadora posible).
     linea_segura = linea_directa
     while total_esperado - linea_segura < 1.0:
+        if linea_segura <= 0.5:
+            break          # ya estamos en el mínimo, no seguir restando
         linea_segura -= 1.0
+        if linea_segura < 0.5:
+            linea_segura = 0.5   # no bajar de Over 0.5
 
     margen = total_esperado - linea_segura
 
@@ -134,6 +141,7 @@ def calcular_lineas_y_confianza(total_esperado: float) -> tuple:
     elif margen >= 1.0:
         confianza = "Media 🟡"
     else:
+        # margen < 1.0: total muy bajo, no existe línea conservadora posible
         confianza = "Baja 🔴"
 
     return (
