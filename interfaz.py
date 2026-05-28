@@ -8,8 +8,7 @@ import threading
 from datetime import datetime, date, timedelta
 import customtkinter as ctk
 from groq import Groq
-from playwright.sync_api import sync_playwright
-from memory import cargar_memoria, guardar_prediccion, generar_contexto_memoria
+from curl_cffi import requests as cf_requests
 from memory import cargar_memoria, guardar_prediccion, generar_contexto_memoria, verificar_predicciones
 
 # ── Configuración ────────────────────────────────────────────────
@@ -30,28 +29,16 @@ ctk.set_default_color_theme("blue")
 
 # ── Lógica SofaScore ─────────────────────────────────────────────
 
-def fetch_api(page, url):
-    return page.evaluate(f"""
-        async () => {{
-            const r = await fetch('{url}');
-            return await r.json();
-        }}
-    """)
+def _nueva_sesion():
+    """Crea una sesión curl_cffi que imita el TLS fingerprint de Chrome para evitar bloqueos de SofaScore."""
+    return cf_requests.Session(impersonate="chrome124")
 
-def obtener_pagina():
-    playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    )
-    page = context.new_page()
-    page.goto("https://www.sofascore.com", timeout=30000, wait_until="domcontentloaded")
-    page.wait_for_timeout(3000)
-    return playwright, browser, page
+def fetch_api(sesion, url):
+    return sesion.get(url, timeout=15).json()
 
 MAX_DIAS_HISTORIAL = 60   # no usar partidos de más de 60 días de antigüedad
 
-def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=5):
+def obtener_partidos_equipo(sesion, nombre_equipo, ultimas_rondas=5):
     """
     Retorna los últimos N partidos TERMINADOS del equipo, ordenados de más
     reciente a más viejo, descartando partidos de más de MAX_DIAS_HISTORIAL días.
@@ -63,7 +50,7 @@ def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=5):
 
     # Iterar desde la ronda más reciente hacia atrás para obtener los más recientes
     for ronda in range(RONDAS_TOTALES + 1, max(0, RONDAS_TOTALES - ultimas_rondas - 6), -1):
-        data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
+        data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
         for evento in data.get("events", []):
             status = evento.get("status", {}).get("type", "")
             start  = evento.get("startTimestamp", 0)
@@ -87,10 +74,10 @@ def obtener_partidos_equipo(page, nombre_equipo, ultimas_rondas=5):
     partidos.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
     return partidos[:ultimas_rondas]
 
-def obtener_estadisticas(page, evento_id):
+def obtener_estadisticas(sesion, evento_id):
     """Devuelve dict {periodo_stat: {home, away}} para un evento."""
     try:
-        data = fetch_api(page, f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics")
+        data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics")
         stats = {}
         for grupo in data.get("statistics", []):
             periodo = grupo["period"]  # "ALL", "1ST" o "2ND"
@@ -106,20 +93,54 @@ def obtener_estadisticas(page, evento_id):
     except:
         return {}
 
-import math as _math
+def calcular_lineas_y_confianza(total_esperado: float) -> tuple:
+    """
+    Retorna (línea_directa, línea_segura, nivel_confianza).
 
-def calcular_linea_over(total_esperado: float) -> str:
+    Línea directa : X.5 inmediatamente inferior al total (la más cercana al total).
+    Línea segura  : primera línea X.5 con margen ≥ 1.0 respecto al total.
+                    Más conservadora y menos riesgosa que la directa.
+    Confianza     : refleja cuánto margen hay entre el total y la línea segura.
+
+    Ejemplos:
+      total=11.60 → ('Over 11.5', 'Over 10.5', 'Media 🟡')   margen=1.10
+      total=13.80 → ('Over 13.5', 'Over 12.5', 'Media 🟡')   margen=1.30
+      total=16.00 → ('Over 15.5', 'Over 14.5', 'Alta 🟢')    margen=1.50
+      total= 9.20 → ('Over 8.5',  'Over 8.5',  'Media 🟡')   margen=1.20 (wait)
+
+    trace total=9.20:
+      linea_directa = 9+0.5 = 9.5... 9.5 >= 9.20 → 8.5
+      linea_segura = 8.5; 9.20-8.5=0.70 < 1.0 → 7.5
+      9.20-7.5=1.70 ≥ 1.0 → stop; confianza='Alta 🟢'
     """
-    Devuelve la línea Over en formato X.5 inmediatamente MENOR al total esperado.
-    Regla: parte_entera(total) + 0.5
-    Ejemplos: 13.80 → 'Over 13.5' | 10.20 → 'Over 9.5' | 9.70 → 'Over 9.5'
-    """
-    base = int(total_esperado)   # parte entera → piso natural
-    linea = base + 0.5
-    # Verificar que la línea es efectivamente menor al total
-    if linea >= total_esperado:
-        linea -= 1.0
-    return f"Over {linea:.1f}"
+    # ── Línea directa: X.5 inmediatamente inferior al total ────────
+    base = int(total_esperado)
+    linea_directa = base + 0.5
+    if linea_directa >= total_esperado:
+        linea_directa -= 1.0
+
+    # ── Línea segura: primer X.5 con margen ≥ 1.0 ─────────────────
+    linea_segura = linea_directa
+    while total_esperado - linea_segura < 1.0:
+        linea_segura -= 1.0
+
+    margen = total_esperado - linea_segura
+
+    # ── Nivel de confianza ─────────────────────────────────────────
+    if margen >= 2.5:
+        confianza = "Muy alta 🟢"
+    elif margen >= 1.5:
+        confianza = "Alta 🟢"
+    elif margen >= 1.0:
+        confianza = "Media 🟡"
+    else:
+        confianza = "Baja 🔴"
+
+    return (
+        f"Over {linea_directa:.1f}",
+        f"Over {linea_segura:.1f}",
+        confianza,
+    )
 
 # Stats de conteo que se pueden promediar directamente
 _STATS_A_PRECOMPUTAR = [
@@ -141,14 +162,14 @@ _STATS_A_PRECOMPUTAR = [
     ("ALL", "Total shots"),
 ]
 
-def precomputar_stats_equipo(page, nombre_equipo, n=5):
+def precomputar_stats_equipo(sesion, nombre_equipo, n=5):
     """
     Busca los últimos N partidos terminados y calcula promedios EN PYTHON,
     extrayendo el valor correcto (local o visitante) de cada stat.
     Para cada stat se captura tanto el valor propio (FOR) como el del rival (AGAINST),
     lo que permite calcular líneas más precisas combinando ambos.
     """
-    partidos     = obtener_partidos_equipo(page, nombre_equipo, n)
+    partidos     = obtener_partidos_equipo(sesion, nombre_equipo, n)
     acum         = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
     acum_against = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}  # stats del rival
     goles            = []   # goles anotados total
@@ -193,8 +214,8 @@ def precomputar_stats_equipo(page, nombre_equipo, n=5):
             f"({'local' if es_local else 'visitante'})"
         )
 
-        stats = obtener_estadisticas(page, e["id"])
-        page.wait_for_timeout(800)   # evitar rate-limiting de SofaScore
+        stats = obtener_estadisticas(sesion, e["id"])
+        time.sleep(0.8)   # evitar rate-limiting de SofaScore
 
         for periodo, stat_name in _STATS_A_PRECOMPUTAR:
             clave = f"{periodo}_{stat_name}"
@@ -280,105 +301,123 @@ def formatear_partido(evento, stats):
 
 def buscar_fixture_equipo(nombre_equipo, dias=4):
     """
-    Busca en SofaScore los próximos partidos de un equipo consultando por fecha.
-    Cubre cualquier competencia (Copa Libertadores, grupos, etc.) sin depender de rondas.
+    Busca en SofaScore los próximos partidos de un equipo.
+    Estrategia de dos pasos:
+      1. Endpoint global por fecha  → cubre la mayoría de ligas y Copa Libertadores.
+      2. Endpoints last/0 y next/0 por liga → cubre ligas pequeñas (ej: Besta deild karla)
+         que no aparecen en el endpoint global.
     """
-    playwright, browser, page = obtener_pagina()
-    try:
-        inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
-        resultados = []
-        vistos = set()   # evitar duplicados entre días (mismo partido puede aparecer en 2 fechas UTC)
-        for delta in range(dias):
-            fecha_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
-            try:
-                data = fetch_api(
-                    page,
-                    f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}"
-                )
-                for evento in data.get("events", []):
-                    eid = evento.get("id")
-                    if eid in vistos:
-                        continue
-                    home = evento.get("homeTeam", {}).get("name", "")
-                    away = evento.get("awayTeam", {}).get("name", "")
-                    if nombre_equipo.lower() not in home.lower() and nombre_equipo.lower() not in away.lower():
-                        continue
-                    ts = evento.get("startTimestamp", 0)
-                    status_type = evento.get("status", {}).get("type", "")
-                    es_hoy = ts >= inicio_hoy and ts < inicio_hoy + 86400
-                    if status_type not in ("notstarted", "inprogress") and not es_hoy:
-                        continue
-                    vistos.add(eid)
-                    torneo = (evento.get("tournament", {})
-                                    .get("uniqueTournament", {})
-                                    .get("name", ""))
-                    hora_str = (datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M")
-                                if ts else "horario sin confirmar")
-                    hoy_tag    = " [HOY]"      if es_hoy                       else ""
-                    curso_tag  = " [EN CURSO]" if status_type == "inprogress"  else ""
-                    resultados.append(
-                        f"{home} vs {away} — {torneo} — {hora_str}{hoy_tag}{curso_tag}"
-                    )
-            except:
-                pass
-        return resultados
-    finally:
-        browser.close()
-        playwright.stop()
+    sesion     = _nueva_sesion()
+    ahora      = datetime.now().timestamp()
+    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+    resultados = []
+    vistos     = set()
+
+    def _agregar_evento(evento, nombre_torneo=None):
+        eid = evento.get("id")
+        if eid in vistos:
+            return
+        home = evento.get("homeTeam", {}).get("name", "")
+        away = evento.get("awayTeam", {}).get("name", "")
+        if nombre_equipo.lower() not in home.lower() and nombre_equipo.lower() not in away.lower():
+            return
+        ts          = evento.get("startTimestamp", 0)
+        status_type = evento.get("status", {}).get("type", "")
+        es_hoy      = inicio_hoy <= ts < inicio_hoy + 86400
+        es_futuro   = (
+            status_type == "inprogress"
+            or (status_type == "notstarted" and ts > ahora)
+            or (status_type == "notstarted" and es_hoy)
+        )
+        if not es_futuro:
+            return
+        vistos.add(eid)
+        torneo = nombre_torneo or (
+            evento.get("tournament", {}).get("uniqueTournament", {}).get("name", "")
+        )
+        hora_str  = datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M") if ts else "horario sin confirmar"
+        hoy_tag   = " [HOY]"      if es_hoy                      else ""
+        curso_tag = " [EN CURSO]" if status_type == "inprogress" else ""
+        resultados.append(f"{home} vs {away} — {torneo} — {hora_str}{hoy_tag}{curso_tag}")
+
+    # ── Paso 1: endpoint global por fecha ───────────────────────────────
+    for delta in range(dias):
+        fecha_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
+        try:
+            data = fetch_api(
+                sesion,
+                f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}"
+            )
+            for evento in data.get("events", []):
+                _agregar_evento(evento)
+        except:
+            pass
+
+    # ── Paso 2: endpoints por liga (cubre ligas pequeñas) ────────────────
+    if not resultados:
+        for nombre_liga, datos_liga in LIGAS.items():
+            liga_id      = datos_liga["id"]
+            temporada_id = datos_liga["temporada"]
+            base = (f"https://www.sofascore.com/api/v1/unique-tournament"
+                    f"/{liga_id}/season/{temporada_id}/events")
+            for endpoint in ["last/0", "next/0"]:
+                try:
+                    resp = fetch_api(sesion, f"{base}/{endpoint}")
+                    for evento in resp.get("events", []):
+                        _agregar_evento(evento, nombre_torneo=nombre_liga)
+                except:
+                    pass
+
+    return resultados
 
 
 def hacer_analisis_completo(equipo1, equipo2):
     global RONDAS_TOTALES
-    playwright, browser, page = obtener_pagina()
+    sesion = _nueva_sesion()
+    # Actualizar RONDAS_TOTALES a la ronda real antes de buscar partidos
     try:
-        # Actualizar RONDAS_TOTALES a la ronda real antes de buscar partidos
-        try:
-            rounds_data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/rounds")
-            rondas_list = rounds_data.get("rounds", [])
-            # currentRound.round = ronda en curso; fallback a última ronda del array
-            RONDAS_TOTALES = (
-                rounds_data.get("currentRound", {}).get("round")
-                or (rondas_list[-1].get("round", RONDAS_TOTALES) if rondas_list else RONDAS_TOTALES)
+        rounds_data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/rounds")
+        rondas_list = rounds_data.get("rounds", [])
+        RONDAS_TOTALES = (
+            rounds_data.get("currentRound", {}).get("round")
+            or (rondas_list[-1].get("round", RONDAS_TOTALES) if rondas_list else RONDAS_TOTALES)
+        )
+    except:
+        pass
+
+    # Pre-calcular stats en Python para cada equipo.
+    stats_eq1, promedios_eq1 = precomputar_stats_equipo(sesion, equipo1)
+    stats_eq2, promedios_eq2 = precomputar_stats_equipo(sesion, equipo2)
+
+    # Buscar el próximo partido entre los dos equipos
+    ahora = datetime.now().timestamp()
+    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+    evento_id_proximo = None
+    info_ronda = ""   # fase/ronda del partido (ej: "Octavos de final", "Ronda 8")
+    ronda_inicio = max(1, RONDAS_TOTALES - 1)
+    for ronda in range(ronda_inicio, RONDAS_TOTALES + 7):
+        data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
+        for evento in data.get("events", []):
+            home   = evento["homeTeam"]["name"]
+            away   = evento["awayTeam"]["name"]
+            status = evento.get("status", {}).get("type", "")
+            start  = evento.get("startTimestamp", 0)
+            equipo1_match = equipo1.lower() in home.lower() or equipo1.lower() in away.lower()
+            equipo2_match = equipo2.lower() in home.lower() or equipo2.lower() in away.lower()
+            es_hoy = inicio_hoy <= start < inicio_hoy + 86400
+            es_vigente = (
+                status == "inprogress"
+                or (status == "notstarted" and start > ahora)
+                or (status == "notstarted" and es_hoy)
             )
-        except:
-            pass  # Si falla, usar el valor que ya tiene RONDAS_TOTALES
-
-        # Pre-calcular stats en Python para cada equipo.
-        # Devuelve (texto, dict_promedios) para calcular la línea de apuesta en Python.
-        stats_eq1, promedios_eq1 = precomputar_stats_equipo(page, equipo1)
-        stats_eq2, promedios_eq2 = precomputar_stats_equipo(page, equipo2)
-
-        # Buscar el próximo partido entre los dos equipos (incluye hoy aunque
-        # el timestamp ya pasó — mismo criterio que fixture_loader)
-        ahora = datetime.now().timestamp()
-        from datetime import date
-        inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
-        evento_id_proximo = None
-        ronda_inicio = max(1, RONDAS_TOTALES - 1)
-        for ronda in range(ronda_inicio, RONDAS_TOTALES + 7):
-            data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/events/round/{ronda}")
-            for evento in data.get("events", []):
-                home   = evento["homeTeam"]["name"]
-                away   = evento["awayTeam"]["name"]
-                status = evento.get("status", {}).get("type", "")
-                start  = evento.get("startTimestamp", 0)
-                equipo1_match = equipo1.lower() in home.lower() or equipo1.lower() in away.lower()
-                equipo2_match = equipo2.lower() in home.lower() or equipo2.lower() in away.lower()
-                es_hoy = inicio_hoy <= start < inicio_hoy + 86400
-                es_vigente = (
-                    status == "inprogress"
-                    or (status == "notstarted" and start > ahora)
-                    or (status == "notstarted" and es_hoy)  # partido de hoy aún sin actualizar
-                )
-                if equipo1_match and equipo2_match and es_vigente:
-                    evento_id_proximo = evento["id"]
-                    break
-            if evento_id_proximo:
+            if equipo1_match and equipo2_match and es_vigente:
+                evento_id_proximo = evento["id"]
+                # Capturar fase/ronda para contexto competitivo
+                ri = evento.get("roundInfo", {})
+                info_ronda = ri.get("name", "") or (f"Ronda {ri['round']}" if ri.get("round") else "")
                 break
-
-    finally:
-        browser.close()
-        playwright.stop()
+        if evento_id_proximo:
+            break
 
     # Calcular líneas de apuesta en Python para las stats principales
     _FOCO_A_CLAVE = {
@@ -402,32 +441,37 @@ def hacer_analisis_completo(equipo1, equipo2):
         v2 = promedios_eq2.get(stat_clave)
         if v1 is None or v2 is None:
             continue
-        # Fórmula mejorada para todas las stats:
-        # total = (FOR_eq1 + FOR_eq2 + AGAINST_eq1 + AGAINST_eq2) / 2
-        # Combina el ataque propio de cada equipo con la defensa del rival,
-        # dando una estimación más precisa que solo sumar los FOR.
+        # Fórmula: total = (FOR_eq1 + FOR_eq2 + AGAINST_eq1 + AGAINST_eq2) / 2
+        # Combina el ataque propio de cada equipo con la defensa del rival.
         a1 = promedios_eq1.get(f"{stat_clave}_against")
         a2 = promedios_eq2.get(f"{stat_clave}_against")
         if a1 is not None and a2 is not None:
             total = (v1 + v2 + a1 + a2) / 2
         else:
             total = v1 + v2   # fallback si no hay datos de concedidos
-        lineas_python[foco_key] = (total, calcular_linea_over(total))
+        linea_directa, linea_segura, confianza = calcular_lineas_y_confianza(total)
+        lineas_python[foco_key] = (total, linea_directa, linea_segura, confianza)
 
     # Agregar al contexto las líneas ya calculadas
     lineas_ctx = []
-    for foco_key, (total, linea) in lineas_python.items():
-        lineas_ctx.append(f"  {foco_key}: total esperado = {total:.2f} → línea Python = {linea}")
+    for foco_key, (total, linea_directa, linea_segura, confianza) in lineas_python.items():
+        lineas_ctx.append(
+            f"  {foco_key}: total esperado = {total:.2f}"
+            f" | línea directa = {linea_directa}"
+            f" | LÍNEA RECOMENDADA = {linea_segura}"
+            f" (confianza: {confianza})"
+        )
 
     contexto = (
         "DATOS REALES DE SOFASCORE (promedios ya calculados por equipo):\n\n"
         f"{stats_eq1}\n\n"
         f"{stats_eq2}\n\n"
-        "LÍNEAS DE APUESTA PRE-CALCULADAS POR PYTHON (usar directamente, no recalcular):\n"
+        "LÍNEAS DE APUESTA PRE-CALCULADAS POR PYTHON:\n"
+        "  (línea directa = la más cercana al total | LÍNEA RECOMENDADA = con margen seguro ≥ 1.0)\n"
         + ("\n".join(lineas_ctx) if lineas_ctx else "  (sin datos suficientes)")
         + "\n"
     )
-    return contexto, evento_id_proximo
+    return contexto, evento_id_proximo, info_ronda
 
 
 # ── Chat con IA ──────────────────────────────────────────────────
@@ -573,6 +617,7 @@ Reglas de formato que NO se pueden violar:
        faltas_2h           — faltas en el segundo tiempo
   3. La liga debe ser exactamente uno de estos valores (copiado tal cual, sin variaciones):
        - Besta deild karla
+       - 1. deild karla
        - La Liga
        - Premier League
        - Serie A
@@ -645,7 +690,8 @@ LIGAS CON ACCESO A DATOS EN TIEMPO REAL
 ════════════════════════════════════════
 
 Tenés acceso a datos en tiempo real de:
-  - Besta deild karla (Islandia)
+  - Besta deild karla (Islandia - primera división)
+  - 1. deild karla (Islandia - segunda división)
   - La Liga (España)
   - Premier League (Inglaterra)
   - Serie A (Italia)
@@ -766,6 +812,27 @@ def _obtener_fixtures_texto() -> str:
         return ""
     return SYSTEM_PROMPT[start:start + 2000]
 
+def _buscar_en_fixtures_cargados(nombre_equipo: str) -> list[str]:
+    """
+    Busca el equipo en los fixtures cargados al arrancar la app (SYSTEM_PROMPT).
+    Sirve de fallback cuando buscar_fixture_equipo no encuentra nada en el
+    endpoint global de SofaScore (ej: ligas pequeñas como Besta deild karla).
+    """
+    fixtures_texto = _obtener_fixtures_texto()
+    if not fixtures_texto:
+        return []
+    resultados = []
+    for linea in fixtures_texto.splitlines():
+        if nombre_equipo.lower() in linea.lower() and ' vs ' in linea:
+            es_hoy_f   = '[HOY]'      in linea
+            en_curso_f = '[EN CURSO]' in linea
+            limpia = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', linea).strip()
+            limpia = limpia.lstrip('- ').strip()
+            sufijo  = ' (hoy)'       if es_hoy_f   else ''
+            sufijo += ' — en curso'  if en_curso_f else ''
+            resultados.append(f"{limpia}{sufijo}")
+    return resultados
+
 def _es_respuesta_a_aclaracion_partido() -> bool:
     """
     Devuelve True si el último mensaje del asistente fue una pregunta de aclaración
@@ -815,57 +882,57 @@ _FOCO_PROMPT = {
         "Hacé un resumen con las stats principales: "
         "mencioná el promedio de goles anotados y recibidos de cada equipo, "
         "el total combinado de corners esperado, tarjetas amarillas esperadas y faltas. "
-        "Para cada stat usá el total de LÍNEAS PRE-CALCULADAS (ya combina anotados y concedidos). "
-        "Usá las líneas de LÍNEAS PRE-CALCULADAS para las recomendaciones."
+        "Para cada stat usá la LÍNEA RECOMENDADA de LÍNEAS PRE-CALCULADAS (no la directa) "
+        "e indicá el nivel de confianza que figura entre paréntesis."
     ),
     "goles": (
         "Leé 'Goles anotados' y 'Goles recibidos' de cada equipo en ESTADÍSTICAS. "
         "Mostrá: equipo1 anota X recibe Z, equipo2 anota Y recibe W. "
         "Indicá también si suelen anotar ambos. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'goles' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'goles' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "corners": (
         "Leé ALL_Corner kicks y ALL_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá: equipo1 genera X concede Z, equipo2 genera Y concede W. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente, no lo sumes vos. "
-        "Usá la línea 'corners' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'corners' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "corners_1h": (
         "Leé 1ST_Corner kicks y 1ST_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de generados y concedidos por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'corners_1h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'corners_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "corners_2h": (
         "Leé 2ND_Corner kicks y 2ND_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de generados y concedidos por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'corners_2h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'corners_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "tarjetas_amarillas": (
         "Leé ALL_Yellow cards y ALL_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'tarjetas_amarillas' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "tarjetas_amarillas_1h": (
         "Leé 1ST_Yellow cards y 1ST_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'tarjetas_amarillas_1h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "tarjetas_amarillas_2h": (
         "Leé 2ND_Yellow cards y 2ND_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'tarjetas_amarillas_2h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "tarjetas_rojas": (
         "Leé ALL_Red cards y ALL_Red cards (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Indicá en cuántos partidos hubo roja (propia o recibida) y si es probable. "
-        "Usá la línea 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS si existe; "
-        "si no, recomendá Sí/No según la frecuencia."
+        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS si existe; "
+        "si no, recomendá Sí/No según la frecuencia. Mencioná la confianza."
     ),
     "tarjetas_rojas_1h": (
         "Leé 1ST_Red cards y 1ST_Red cards (concedidos). Frecuencia de rojas en 1er tiempo. "
@@ -878,38 +945,38 @@ _FOCO_PROMPT = {
     "remates": (
         "Leé ALL_Shots on target y ALL_Shots on target (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de generados y recibidos por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'remates' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'remates' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "remates_1h": (
         "Leé 1ST_Shots on target y 1ST_Shots on target (concedidos). "
         "Mostrá promedios de generados y recibidos. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'remates_1h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'remates_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "remates_2h": (
         "Leé 2ND_Shots on target y 2ND_Shots on target (concedidos). "
         "Mostrá promedios de generados y recibidos. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'remates_2h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'remates_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "faltas": (
         "Leé ALL_Fouls y ALL_Fouls (concedidos) de cada equipo en ESTADÍSTICAS. "
         "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'faltas' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'faltas' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "faltas_1h": (
         "Leé 1ST_Fouls y 1ST_Fouls (concedidos). "
         "Mostrá promedios de cometidas y recibidas. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'faltas_1h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'faltas_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
     "faltas_2h": (
         "Leé 2ND_Fouls y 2ND_Fouls (concedidos). "
         "Mostrá promedios de cometidas y recibidas. "
-        "El total combinado está en LÍNEAS PRE-CALCULADAS → usá ese valor directamente. "
-        "Usá la línea 'faltas_2h' de LÍNEAS PRE-CALCULADAS."
+        "Usá la LÍNEA RECOMENDADA del foco 'faltas_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
+        "Mencioná el nivel de confianza entre paréntesis."
     ),
 }
 
@@ -986,7 +1053,7 @@ def chat_con_ia(mensaje, datos_sofascore=None, callback=None, forzar_action=Fals
                 "  aclarar cuál partido, no dijo 'hoy', o hay varios partidos próximos):\n"
                 "  → Usá la LISTA DE ARRIBA para buscar los partidos del equipo mencionado.\n"
                 "    Si tiene 1 partido: '¿Hablás del partido [Equipo] vs [Rival] el [fecha]?'\n"
-                "    Si tiene 2+ partidos: '¿De qué partido hablás? [Equipo] tiene [partido1 fecha] y [partido2 fecha].'\n"
+                "    Si tiene 2+ partidos: '¿De qué partido hablás? g[Equipo] tiene [partido1 fecha] y [partido2 fecha].'\n"
                 "  CRÍTICO: los nombres de equipos y fechas deben ser EXACTAMENTE los de la lista.\n"
                 "  NUNCA inventes ni cambies fechas. NO emitas ACTION:ANALIZAR. Esperá al usuario.\n\n"
                 "Focos válidos: corners, corners_1h, corners_2h, goles, tarjetas_amarillas, "
@@ -1124,16 +1191,19 @@ class App(ctk.CTk):
                     historial.append({"role": "user", "content": mensaje})
                     self.set_status(f"🔍 Buscando partidos de {equipo_extraido} en SofaScore...")
                     partidos_encontrados = buscar_fixture_equipo(equipo_extraido)
+                    if not partidos_encontrados:
+                        # Fallback: buscar en los fixtures cargados al inicio
+                        # (cubre ligas pequeñas que no aparecen en el endpoint global)
+                        partidos_encontrados = _buscar_en_fixtures_cargados(equipo_extraido)
                     if partidos_encontrados:
-                        lineas = []
-                        for f in partidos_encontrados:
-                            es_hoy_f   = "[HOY]"      in f
-                            en_curso_f = "[EN CURSO]" in f
-                            f_limpio   = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
-                            sufijo     = " (hoy)"       if es_hoy_f   else ""
-                            sufijo    += " — en curso"  if en_curso_f else ""
-                            lineas.append(f"• {f_limpio}{sufijo}")
-                        texto = f"Próximos partidos de {equipo_extraido}:\n" + "\n".join(lineas)
+                        # Mostrar solo el partido más próximo (el primero en orden cronológico)
+                        f          = partidos_encontrados[0]
+                        es_hoy_f   = "[HOY]"      in f
+                        en_curso_f = "[EN CURSO]" in f
+                        f_limpio   = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
+                        sufijo     = " (hoy)"       if es_hoy_f   else ""
+                        sufijo    += " — en curso"  if en_curso_f else ""
+                        texto = f"El próximo partido de {equipo_extraido} es:\n• {f_limpio}{sufijo}"
                     else:
                         texto = f"No encontré próximos partidos de {equipo_extraido} en SofaScore."
                     historial.append({"role": "assistant", "content": texto})
@@ -1153,18 +1223,17 @@ class App(ctk.CTk):
                 if equipo_buscar:
                     self.set_status(f"🔍 Buscando partidos de {equipo_buscar} en SofaScore...")
                     fixtures = buscar_fixture_equipo(equipo_buscar)
+                    if not fixtures:
+                        fixtures = _buscar_en_fixtures_cargados(equipo_buscar)
                     if fixtures:
-                        # Limpiar tags internas antes de mostrar
-                        lineas = []
-                        for f in fixtures:
-                            f_limpio = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
-                            # Detectar si es hoy o en curso para agregarlo en lenguaje natural
-                            es_hoy_fix   = "[HOY]"      in f
-                            en_curso_fix = "[EN CURSO]" in f
-                            sufijo = " (hoy)" if es_hoy_fix else ""
-                            sufijo += " — en curso" if en_curso_fix else ""
-                            lineas.append(f"• {f_limpio}{sufijo}")
-                        texto = f"Próximos partidos de {equipo_buscar}:\n" + "\n".join(lineas)
+                        # Mostrar solo el partido más próximo
+                        f            = fixtures[0]
+                        es_hoy_fix   = "[HOY]"      in f
+                        en_curso_fix = "[EN CURSO]" in f
+                        f_limpio     = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
+                        sufijo       = " (hoy)"       if es_hoy_fix   else ""
+                        sufijo      += " — en curso"  if en_curso_fix else ""
+                        texto = f"El próximo partido de {equipo_buscar} es:\n• {f_limpio}{sufijo}"
                     else:
                         texto = f"No encontré próximos partidos de {equipo_buscar} en SofaScore."
                     # Limpiar historial para no recordar la ACTION
@@ -1202,7 +1271,7 @@ class App(ctk.CTk):
                 RONDAS_TOTALES = liga["rondas"]
 
                 self.set_status("🔄 Bajando datos de SofaScore...")
-                datos, evento_id = hacer_analisis_completo(equipo1, equipo2)
+                datos, evento_id, info_ronda = hacer_analisis_completo(equipo1, equipo2)
 
                 print("=== DATOS SOFASCORE ===")
                 print(datos)
@@ -1221,9 +1290,32 @@ class App(ctk.CTk):
                 # Instrucción específica para el foco pedido
                 instruccion_foco = _FOCO_PROMPT.get(foco_lower, _FOCO_PROMPT["completo"])
 
+                # ── Contexto competitivo ────────────────────────────────────
+                _COPAS = {"Champions League", "Copa Libertadores", "Copa Sudamericana"}
+                ctx_comp = f"COMPETICIÓN: {liga_nombre}"
+                if info_ronda:
+                    ctx_comp += f" — {info_ronda}"
+
+                if liga_nombre in _COPAS:
+                    nota_comp = (
+                        "Este partido es de una copa eliminatoria o por fases de grupos. "
+                        "Considerá si algún equipo podría estar jugándose la clasificación "
+                        "o enfrentando la eliminación: eso suele elevar la intensidad "
+                        "(más faltas y tarjetas por presión, más corners defensivos, "
+                        "o más goles si un equipo necesita marcar sí o sí). "
+                        "Mencioná brevemente este factor y si puede ajustar la línea recomendada al alza."
+                    )
+                else:
+                    nota_comp = (
+                        "Considerá si el partido tiene relevancia especial en la tabla "
+                        "(lucha por el título, zona de clasificación a copas, pelea por el descenso), "
+                        "ya que eso puede afectar la intensidad y las stats esperadas."
+                    )
+
                 analisis = chat_con_ia(
                 f"""Analizá el partido {equipo1} vs {equipo2} usando los datos de SofaScore.
 
+{ctx_comp}
 PERÍODO A USAR: {instruccion_periodo}
 
 IMPORTANTE: Los datos ya incluyen los promedios pre-calculados por equipo.
@@ -1233,15 +1325,22 @@ Los promedios son exactos — usá esos valores directamente, no los recalcules.
 TAREA:
 {instruccion_foco}
 
-REGLAS:
+REGLAS DE APUESTA:
+- Usá SIEMPRE la LÍNEA RECOMENDADA (no la directa) de LÍNEAS PRE-CALCULADAS.
+  La línea recomendada tiene margen ≥ 1.0 respecto al total esperado: es más
+  conservadora y tiene mayor probabilidad de entrar.
+- Indicá el nivel de confianza tal como figura entre paréntesis en los datos.
+- Si la línea directa y la recomendada difieren, podés mencionarlo: "la línea más
+  arriesgada sería X, pero la apuesta más segura es Y (confianza: Z)".
+
+REGLAS GENERALES:
 - Usá SOLO los promedios del período indicado (no mezcles ALL/1ST/2ND).
 - Total del partido = promedio_equipo1 + promedio_equipo2 (SUMÁ, no promedies).
-- LÍNEA DE APUESTA: usá EXACTAMENTE la línea que figura en "LÍNEAS DE APUESTA
-  PRE-CALCULADAS POR PYTHON" para el foco correspondiente. No la recalcules.
-  Esa línea garantiza que X.5 < total esperado (apuesta con sentido estadístico).
-- Si hay menos de 4 partidos con datos, aclaralo.
-- Máximo 120 palabras. Texto corrido, sin listas.
-- NO uses conocimiento propio.
+- Interpretá la tendencia: ¿son valores altos o bajos para esta stat? ¿El over es cómodo o ajustado?
+- CONTEXTO COMPETITIVO: {nota_comp}
+- Si hay menos de 4 partidos con datos, mencioná que la muestra es pequeña.
+- Máximo 250 palabras. Texto corrido, sin listas.
+- NO uses conocimiento propio para estadísticas.
 - Terminá con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
                 datos_sofascore=datos
             )
@@ -1308,15 +1407,8 @@ REGLAS:
 
 
 if __name__ == "__main__":
-    from playwright.sync_api import sync_playwright
     print("🔄 Verificando predicciones anteriores...")
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0")
-        page = context.new_page()
-        page.goto("https://www.sofascore.com", timeout=30000, wait_until="domcontentloaded")
-        verificar_predicciones(page)
-        browser.close()
+    verificar_predicciones(_nueva_sesion())
 
     print("🔄 Cargando fixtures...")
     fixtures = cargar_proximos_partidos()

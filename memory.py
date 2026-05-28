@@ -263,7 +263,7 @@ STATS_A_CAPTURAR = [
 ]
 
 
-def verificar_predicciones(page):
+def verificar_predicciones(sesion):
     """
     Recorre todas las predicciones con evento_id pendientes de verificar,
     consulta SofaScore para obtener el resultado y estadísticas (ALL + 1ST + 2ND),
@@ -279,12 +279,10 @@ def verificar_predicciones(page):
         evento_id = pred["evento_id"]
         try:
             # ── Datos del evento ──────────────────────────────────────────
-            data_evento = page.evaluate(f"""
-                async () => {{
-                    const r = await fetch('https://www.sofascore.com/api/v1/event/{evento_id}');
-                    return await r.json();
-                }}
-            """)
+            data_evento = sesion.get(
+                f"https://www.sofascore.com/api/v1/event/{evento_id}",
+                timeout=15
+            ).json()
             evento = data_evento.get("event", {})
             if evento.get("status", {}).get("type", "") != "finished":
                 continue
@@ -302,12 +300,10 @@ def verificar_predicciones(page):
                 ganador = "draw"
 
             # ── Estadísticas por período ──────────────────────────────────
-            data_stats = page.evaluate(f"""
-                async () => {{
-                    const r = await fetch('https://www.sofascore.com/api/v1/event/{evento_id}/statistics');
-                    return await r.json();
-                }}
-            """)
+            data_stats = sesion.get(
+                f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics",
+                timeout=15
+            ).json()
 
             stats_por_periodo = {}   # {"ALL": {...}, "1ST": {...}, "2ND": {...}}
             for grupo in data_stats.get("statistics", []):
