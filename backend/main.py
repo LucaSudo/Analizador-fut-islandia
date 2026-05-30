@@ -133,6 +133,30 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             if not equipo and not engine._es_consulta_todos_partidos(message):
                 equipo = engine._extraer_equipo_de_historial(history)
 
+            # ── Consulta genérica: listar todos los partidos del día directamente ──
+            if not equipo and engine._es_consulta_todos_partidos(message):
+                fixtures_txt = engine._obtener_fixtures_texto()
+                if fixtures_txt:
+                    # Extraer solo los partidos de HOY de los fixtures cargados
+                    lineas_hoy = [
+                        l.strip() for l in fixtures_txt.splitlines()
+                        if "[HOY]" in l or "[EN CURSO]" in l
+                    ]
+                    if lineas_hoy:
+                        texto = "Partidos de hoy:\n" + "\n".join(
+                            "• " + re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', l).strip()
+                            for l in lineas_hoy
+                        )
+                    else:
+                        texto = "No encontré partidos programados para hoy en las ligas que sigo."
+                else:
+                    texto = "Los fixtures aún se están cargando, intentá en un momento."
+                session_store.append_message(session_id, "user", message)
+                session_store.append_message(session_id, "assistant", texto)
+                emit("response", {"type": "fixture", "content": texto})
+                emit("done", {})
+                return
+
             if equipo:
                 status(f"🔍 Buscando partidos de {equipo} en SofaScore...")
                 partidos = engine.buscar_fixture_equipo(equipo)

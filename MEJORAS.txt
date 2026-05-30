@@ -1,0 +1,37 @@
+═══════════════════════════════════════════════════════════════
+  SCOUTAI — MEJORAS PENDIENTES
+  (se completan a medida que avanza el análisis exhaustivo)
+═══════════════════════════════════════════════════════════════
+
+── UX / PRESENTACIÓN ──────────────────────────────────────────
+
+[ ] 1. Indicar el equipo LOCAL en el análisis.
+       Al ser ligas lejanas, el usuario no sabe quién juega de local.
+       Propuesta: marcar el local en el header, ej:
+         "KR Reykjavík (L) vs KA Akureyri"  o  "🏠 KR Reykjavík vs KA Akureyri"
+       Aplica a TODOS los análisis y a la lista de fixtures.
+
+[ ] 2. Respuestas de fixtures demasiado conversacionales.
+       Al preguntar "qué partidos hay hoy" el bot responde con tono
+       de chat ("Te puedo decir que...") en vez del formato directo
+       de lista. Revisar que la ruta directa (bypass LLM) se dispare.
+
+[ ] 3. Espacio sobrante en la etiqueta de confianza: "(Alta )" → "(Alta)".
+       Hay un espacio antes del paréntesis de cierre. Bug de formato
+       en el armado del texto de líneas.
+
+═══════════════════════════════════════════════════════════════
+  PENDIENTES CONOCIDOS (de sesiones previas)
+═══════════════════════════════════════════════════════════════
+
+[ ] 4. Timezone por usuario: actualmente hardcodeado UTC-3 (Argentina).
+       Para usuarios de otras regiones (México UTC-6, etc.) los partidos
+       nocturnos pueden caer mal. Solución: enviar offset del browser
+       en cada request y usarlo en backend.
+
+[ ] 5. Email confirmation en Supabase: decidir si dejarlo activado
+       o desactivarlo para facilitar onboarding inicial.
+
+[ ] 6. Pagos / Plan Pro: Stripe o MercadoPago (cuando haya usuarios).
+
+═══════════════════════════════════════════════════════════════

@@ -19,6 +19,9 @@ for _p in (_HERE, _ROOT):
 
 from supabase_client import db
 
+# Usuarios admin: sin límites. Separados por coma en ADMIN_USER_IDS.
+_ADMIN_IDS = {uid.strip() for uid in os.getenv("ADMIN_USER_IDS", "").split(",") if uid.strip()}
+
 LIMITE_ANALISIS   = 2
 LIMITE_COMBINADAS = 1
 
@@ -67,6 +70,8 @@ def _upsert_uso(user_id: str, analisis: int, combinadas: int):
 
 def check_analisis(user_id: str) -> tuple[bool, str]:
     """Retorna (permitido, mensaje). Consume el cupo si está permitido."""
+    if user_id in _ADMIN_IDS:
+        return True, ""  # Admin: sin límites
     if user_id == "default":
         if _PRODUCCION:
             return False, _MSG_LOGIN
@@ -81,6 +86,8 @@ def check_analisis(user_id: str) -> tuple[bool, str]:
 
 def check_combinada(user_id: str) -> tuple[bool, str]:
     """Retorna (permitido, mensaje). Consume el cupo si está permitido."""
+    if user_id in _ADMIN_IDS:
+        return True, ""  # Admin: sin límites
     if user_id == "default":
         if _PRODUCCION:
             return False, _MSG_LOGIN
