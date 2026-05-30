@@ -1,3 +1,4 @@
+import os
 from curl_cffi import requests as cf_requests
 from datetime import datetime, date, timedelta
 
@@ -19,7 +20,11 @@ LIGAS_CONFIG = {
 LIGAS = {}
 
 def _nueva_sesion():
-    return cf_requests.Session(impersonate="chrome124")
+    session = cf_requests.Session(impersonate="chrome124")
+    proxy_url = os.getenv("PROXY_URL", "")
+    if proxy_url:
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+    return session
 
 def fetch_api(sesion, url):
     return sesion.get(url, timeout=15).json()
