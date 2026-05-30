@@ -3,336 +3,565 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>⚽ Chat Fútbol — Test</title>
+  <title>ScoutAI — Análisis de fútbol con IA</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #080d14;
+      --bg-card:      #0f1923;
+      --bg-elevated:  #162032;
+      --border:       #1e3a5f;
+      --accent:       #38bdf8;
+      --accent-glow:  rgba(56,189,248,0.12);
+      --text:         #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted:   #64748b;
+      --green:        #22c55e;
+      --radius:       12px;
+    }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
     }
 
-    /* ── Top bar ── */
+    .hidden { display: none !important; }
+
+    /* ── LANDING ──────────────────────────────────────────── */
+    #landing { min-height: 100vh; display: flex; flex-direction: column; }
+
+    .nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 40px;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0;
+      background: rgba(8,13,20,0.96);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+    .nav-logo { font-size: 20px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
+    .nav-logo span { color: var(--text); }
+    .nav-actions { display: flex; gap: 10px; }
+
+    .btn-outline {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary); padding: 8px 18px;
+      border-radius: 8px; font-size: 14px; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-primary {
+      background: var(--accent); border: none; color: #000;
+      padding: 8px 18px; border-radius: 8px; font-size: 14px;
+      font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+
+    /* Hero */
+    .hero {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 80px 24px 60px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent-glow);
+      border: 1px solid rgba(56,189,248,0.28);
+      color: var(--accent); font-size: 13px;
+      padding: 5px 16px; border-radius: 20px; margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-size: clamp(30px, 5vw, 54px); font-weight: 800;
+      line-height: 1.15; letter-spacing: -1px;
+      max-width: 780px; margin-bottom: 20px;
+    }
+    .hero h1 .accent { color: var(--accent); }
+    .hero p {
+      font-size: 18px; color: var(--text-secondary);
+      max-width: 540px; line-height: 1.65; margin-bottom: 40px;
+    }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn-hero {
+      background: var(--accent); color: #000; border: none;
+      padding: 14px 32px; border-radius: 10px; font-size: 16px;
+      font-weight: 700; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-hero:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-hero-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); padding: 14px 32px;
+      border-radius: 10px; font-size: 16px; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-hero-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Features */
+    .features {
+      padding: 70px 40px; max-width: 1080px;
+      margin: 0 auto; width: 100%;
+    }
+    .section-label {
+      text-align: center; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 2px;
+      color: var(--accent); margin-bottom: 10px;
+    }
+    .section-title {
+      text-align: center; font-size: 26px;
+      font-weight: 700; margin-bottom: 44px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 18px;
+    }
+    .feature-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: rgba(56,189,248,0.35); }
+    .feature-icon { font-size: 28px; margin-bottom: 14px; }
+    .feature-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* Plans */
+    .plans {
+      padding: 60px 40px; max-width: 780px;
+      margin: 0 auto; width: 100%;
+    }
+    .plans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .plan-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 30px;
+    }
+    .plan-card.featured {
+      border-color: var(--accent);
+      background: linear-gradient(145deg, var(--bg-elevated), var(--bg-card));
+    }
+    .plan-tag {
+      display: inline-block; background: var(--accent); color: #000;
+      font-size: 10px; font-weight: 700; padding: 3px 10px;
+      border-radius: 20px; margin-bottom: 14px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .plan-name { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .plan-price { font-size: 30px; font-weight: 800; color: var(--accent); margin-bottom: 20px; }
+    .plan-price small { font-size: 14px; font-weight: 400; color: var(--text-muted); }
+    .plan-features { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
+    .plan-features li { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+    .plan-features li.ok::before { content: "✓"; color: var(--green); font-weight: 700; }
+    .plan-features li.dim { color: var(--text-muted); }
+    .plan-features li.dim::before { content: "·"; color: var(--text-muted); }
+    .plan-btn {
+      width: 100%; padding: 11px; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .plan-btn.cta { background: var(--accent); border: none; color: #000; }
+    .plan-btn.cta:hover { opacity: 0.88; }
+    .plan-btn.dim { background: transparent; border: 1px solid var(--border); color: var(--text-muted); cursor: default; }
+
+    /* Footer */
+    footer {
+      text-align: center; padding: 28px 24px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted); font-size: 13px;
+    }
+
+    /* ── AUTH MODAL ────────────────────────────────────────── */
+    #auth-modal {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 16px;
+      backdrop-filter: blur(4px);
+    }
+    .auth-card {
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px;
+      width: 100%; max-width: 400px; position: relative;
+    }
+    .auth-close {
+      position: absolute; top: 14px; right: 14px;
+      background: transparent; border: none;
+      color: var(--text-muted); font-size: 18px;
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .auth-close:hover { background: var(--border); color: var(--text); }
+    .auth-brand { text-align: center; font-size: 22px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+    .auth-hint { text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 22px; }
+    .auth-tabs {
+      display: flex; background: var(--bg-card);
+      border-radius: 8px; padding: 3px; gap: 3px; margin-bottom: 18px;
+    }
+    .auth-tab {
+      flex: 1; padding: 8px; text-align: center; font-size: 13px;
+      cursor: pointer; background: transparent; border: none;
+      color: var(--text-muted); border-radius: 6px; transition: all 0.15s;
+    }
+    .auth-tab.active { background: var(--bg-elevated); color: var(--text); }
+    .auth-field { margin-bottom: 13px; }
+    .auth-field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+    .auth-field input {
+      width: 100%; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; color: var(--text); font-size: 14px;
+      outline: none; transition: border-color 0.15s;
+    }
+    .auth-field input:focus { border-color: var(--accent); }
+    .auth-submit {
+      width: 100%; background: var(--accent); color: #000;
+      border: none; border-radius: 8px; padding: 12px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      margin-top: 4px; transition: opacity 0.15s;
+    }
+    .auth-submit:hover:not(:disabled) { opacity: 0.88; }
+    .auth-submit:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
+    .auth-msg {
+      margin-top: 12px; border-radius: 8px;
+      padding: 10px 12px; font-size: 13px; display: none;
+    }
+    .auth-msg.error { background: #2d1212; border: 1px solid #8b2020; color: #ff8a80; display: block; }
+    .auth-msg.success { background: #0d2b0d; border: 1px solid #2e7d32; color: #a5d6a7; display: block; }
+
+    /* ── CHAT APP ──────────────────────────────────────────── */
+    #app { height: 100vh; display: flex; flex-direction: column; }
+
     .topbar {
-      background: #16213e;
-      padding: 10px 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid #0f3460;
+      background: var(--bg-card); padding: 10px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
-    .topbar label { font-size: 12px; color: #888; white-space: nowrap; }
-    .topbar input {
-      flex: 1;
-      background: #0f3460;
-      border: 1px solid #1a4a8a;
-      border-radius: 6px;
-      padding: 6px 10px;
-      color: #e0e0e0;
-      font-size: 13px;
-      outline: none;
+    .topbar-logo { font-size: 17px; font-weight: 800; color: var(--accent); }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .topbar-user { font-size: 13px; color: var(--text-secondary); }
+    .topbar-plan {
+      font-size: 11px; color: var(--text-muted);
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      padding: 3px 10px; border-radius: 6px;
     }
-    .topbar input:focus { border-color: #4fc3f7; }
-    .btn-new {
-      background: #0f3460;
-      border: 1px solid #1a4a8a;
-      color: #e0e0e0;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      white-space: nowrap;
-      transition: background 0.15s;
+    .btn-sm {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 5px 11px;
+      border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s;
     }
-    .btn-new:hover { background: #1a4a8a; }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-sm.danger:hover { border-color: #ef4444; color: #ef4444; }
 
-    /* ── Chat area ── */
     #chat {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
+      flex: 1; overflow-y: auto; padding: 20px;
+      display: flex; flex-direction: column; gap: 14px;
     }
-
     .bubble-wrap { display: flex; flex-direction: column; }
     .bubble-wrap.user { align-items: flex-end; }
     .bubble-wrap.bot  { align-items: flex-start; }
-
-    .sender-label {
-      font-size: 11px;
-      color: #888;
-      margin-bottom: 3px;
-      padding: 0 4px;
-    }
-    .bubble-wrap.bot .sender-label { color: #4fc3f7; }
-
+    .sender-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; padding: 0 4px; }
+    .bubble-wrap.bot .sender-label { color: var(--accent); }
     .bubble {
-      max-width: 80%;
-      padding: 10px 14px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-word;
+      max-width: 80%; padding: 10px 14px; border-radius: 14px;
+      font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
     }
-    .bubble-wrap.user .bubble {
-      background: #0f3460;
-      border-bottom-right-radius: 4px;
-    }
-    .bubble-wrap.bot .bubble {
-      background: #16213e;
-      border: 1px solid #1f3a6e;
-      border-bottom-left-radius: 4px;
-    }
-
-    /* Analysis bubble */
-    .bubble.analysis { background: #0d2137; border-color: #1a5276; }
-    .analysis-header {
-      font-size: 13px;
-      color: #4fc3f7;
-      border-bottom: 1px solid #1a5276;
-      padding-bottom: 6px;
-      margin-bottom: 8px;
-      white-space: pre-wrap;
-    }
-    .analysis-body { font-size: 14px; line-height: 1.6; }
-    .analysis-body .para {
-      padding: 9px 0;
-    }
-    .analysis-body .para + .para {
-      border-top: 1px solid rgba(79, 195, 247, 0.12);
-    }
-    .analysis-body .para.warning {
-      color: #888;
-      font-size: 12.5px;
-      font-style: italic;
-      border-top: 1px solid rgba(79, 195, 247, 0.08) !important;
-      padding-top: 10px;
-    }
-
-    /* Combinada bubble */
-    .bubble.combinada { background: #0d1f0d; border-color: #1e4620; }
-
-    /* Status indicator */
-    .status-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #888;
-      font-size: 13px;
-      padding: 4px 0;
-    }
-    .spinner {
-      width: 14px; height: 14px;
-      border: 2px solid #333;
-      border-top-color: #4fc3f7;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
+    .bubble-wrap.user .bubble { background: #1a3555; border-bottom-right-radius: 4px; }
+    .bubble-wrap.bot  .bubble { background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .bubble.analysis  { background: #07141f; border-color: #1e3a5f; }
+    .bubble.combinada { background: #071a0e; border-color: #1a4a28; }
+    .analysis-header { font-size: 13px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 10px; white-space: pre-wrap; }
+    .analysis-body { font-size: 14px; line-height: 1.65; }
+    .analysis-body .para { padding: 8px 0; }
+    .analysis-body .para + .para { border-top: 1px solid rgba(56,189,248,0.08); }
+    .analysis-body .para.warning { color: var(--text-muted); font-size: 12.5px; font-style: italic; }
+    .status-wrap { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; padding: 4px 0; }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Debug panel ── */
-    #debug-panel {
-      background: #0a0a1a;
-      border-top: 1px solid #1a3a1a;
-      padding: 6px 12px;
-      font-size: 11px;
-      color: #4caf50;
-      font-family: monospace;
-      max-height: 140px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-    }
-    #debug-toggle {
-      background: #0a0a1a;
-      border: none;
-      border-top: 1px solid #1a3a1a;
-      color: #4caf50;
-      font-size: 10px;
-      font-family: monospace;
-      padding: 2px 12px;
-      cursor: pointer;
-      text-align: left;
-      width: 100%;
-    }
-
-    /* ── Input area ── */
     .input-area {
-      background: #16213e;
-      border-top: 1px solid #0f3460;
-      padding: 12px 16px;
-      display: flex;
-      gap: 10px;
-      align-items: flex-end;
+      background: var(--bg-card); border-top: 1px solid var(--border);
+      padding: 12px 20px; display: flex; gap: 10px; align-items: flex-end; flex-shrink: 0;
     }
     #msg-input {
-      flex: 1;
-      background: #0f3460;
-      border: 1px solid #1a4a8a;
-      border-radius: 10px;
-      padding: 10px 14px;
-      color: #e0e0e0;
-      font-size: 14px;
-      outline: none;
-      resize: none;
-      min-height: 42px;
-      max-height: 120px;
-      font-family: inherit;
-      line-height: 1.4;
+      flex: 1; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px; color: var(--text);
+      font-size: 14px; outline: none; resize: none;
+      min-height: 42px; max-height: 120px;
+      font-family: inherit; line-height: 1.4; transition: border-color 0.15s;
     }
-    #msg-input:focus { border-color: #4fc3f7; }
-    #msg-input::placeholder { color: #555; }
+    #msg-input:focus { border-color: var(--accent); }
+    #msg-input::placeholder { color: var(--text-muted); }
     #btn-send {
-      background: #1565c0;
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 20px;
-      font-size: 14px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.15s;
-      height: 42px;
+      background: var(--accent); color: #000; border: none;
+      border-radius: 10px; padding: 10px 20px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      height: 42px; transition: opacity 0.15s; white-space: nowrap;
     }
-    #btn-send:hover:not(:disabled) { background: #1976d2; }
-    #btn-send:disabled { background: #333; color: #666; cursor: default; }
+    #btn-send:hover:not(:disabled) { opacity: 0.88; }
+    #btn-send:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
+
+    @media (max-width: 640px) {
+      .nav { padding: 14px 20px; }
+      .hero { padding: 50px 20px 40px; }
+      .features, .plans { padding: 44px 20px; }
+      .plans-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 28px; }
+      .hero p { font-size: 15px; }
+      .topbar-plan { display: none; }
+    }
   </style>
 </head>
 <body>
 
-  <!-- Top bar: backend URL + new chat -->
-  <div class="topbar">
-    <label for="base-url">Backend URL:</label>
-    <input id="base-url" type="text" value="http://localhost:8000" placeholder="https://xxxx.ngrok-free.app" />
-    <button class="btn-new" type="button" onclick="newChat()">🔄 Nueva sesión</button>
-  </div>
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  LANDING                                              -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="landing">
 
-  <!-- Chat messages -->
-  <div id="chat">
-    <div class="bubble-wrap bot">
-      <div class="sender-label">🤖 Bot</div>
-      <div class="bubble">¡Buenas! Conectate al backend y empezá a chatear. Podés pegar la URL de ngrok arriba si estás probando desde otro dispositivo.</div>
+  <nav class="nav">
+    <div class="nav-logo">Scout<span>AI</span></div>
+    <div class="nav-actions">
+      <button class="btn-outline" onclick="openAuth('login')">Iniciar sesión</button>
+      <button class="btn-primary" onclick="openAuth('register')">Empezar gratis</button>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">⚽ Impulsado por IA</div>
+    <h1>Análisis de fútbol con <span class="accent">inteligencia artificial</span></h1>
+    <p>Pedí predicciones sobre cualquier partido y obtené estadísticas reales analizadas por IA. Datos de SofaScore, respuestas en segundos.</p>
+    <div class="hero-actions">
+      <button class="btn-hero" onclick="openAuth('register')">Empezar gratis →</button>
+      <button class="btn-hero-ghost" onclick="openAuth('login')">Ya tengo cuenta</button>
+    </div>
+  </section>
+
+  <section class="features">
+    <p class="section-label">Funcionalidades</p>
+    <h2 class="section-title">Todo lo que necesitás para analizar</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Datos reales de SofaScore</h3>
+        <p>Estadísticas de los últimos partidos de más de 10 ligas: Premier League, La Liga, Champions League, Copa Libertadores y más.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>IA avanzada</h3>
+        <p>Análisis generado con LLaMA 3.3 70B sobre corners, goles, tarjetas y remates. Los cálculos se hacen en Python para máxima precisión.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Combinadas automáticas</h3>
+        <p>Pedí la mejor combinada del día y la IA selecciona los picks con mayor confianza estadística entre todos los partidos disponibles.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="plans">
+    <p class="section-label">Planes</p>
+    <h2 class="section-title">Empezá gratis, escalá cuando quieras</h2>
+    <div class="plans-grid">
+      <div class="plan-card">
+        <div class="plan-name">Gratuito</div>
+        <div class="plan-price">$0 <small>/ mes</small></div>
+        <ul class="plan-features">
+          <li class="ok">2 análisis por día</li>
+          <li class="ok">1 combinada por día</li>
+          <li class="ok">Acceso a todas las ligas</li>
+          <li class="ok">Historial de predicciones</li>
+        </ul>
+        <button class="plan-btn cta" onclick="openAuth('register')">Empezar gratis</button>
+      </div>
+      <div class="plan-card featured">
+        <div class="plan-tag">Próximamente</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">Pronto <small></small></div>
+        <ul class="plan-features">
+          <li class="ok">Análisis ilimitados</li>
+          <li class="ok">Combinadas ilimitadas</li>
+          <li class="ok">Acceso a todas las ligas</li>
+          <li class="ok">Soporte prioritario</li>
+        </ul>
+        <button class="plan-btn dim" disabled>Muy pronto</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>ScoutAI © 2026 — Análisis deportivo con inteligencia artificial</footer>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  AUTH MODAL                                           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="auth-modal" class="hidden" onclick="handleOverlayClick(event)">
+  <div class="auth-card">
+    <button class="auth-close" onclick="closeAuth()">✕</button>
+    <div class="auth-brand">ScoutAI</div>
+    <div class="auth-hint" id="auth-hint">Iniciá sesión para continuar</div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">Iniciar sesión</button>
+      <button class="auth-tab"        id="tab-register" onclick="switchTab('register')">Registrarse</button>
+    </div>
+
+    <div class="auth-field" id="field-nombre" style="display:none">
+      <label>Nombre de usuario</label>
+      <input id="auth-nombre" type="text" placeholder="Ej: Lucas" autocomplete="nickname" />
+    </div>
+    <div class="auth-field">
+      <label>Email</label>
+      <input id="auth-email" type="email" placeholder="tu@email.com" autocomplete="email" />
+    </div>
+    <div class="auth-field">
+      <label>Contraseña</label>
+      <input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+
+    <div id="auth-msg" class="auth-msg"></div>
+    <button class="auth-submit" id="auth-submit" onclick="authAction()">Iniciar sesión</button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  CHAT APP                                             -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div class="topbar-logo">ScoutAI</div>
+    <div class="topbar-right">
+      <span class="topbar-plan">Plan Gratuito · 2 análisis / 1 combinada por día</span>
+      <button class="btn-sm" onclick="newChat()">↺ Nueva sesión</button>
+      <span class="topbar-user" id="user-label"></span>
+      <button class="btn-sm danger" onclick="logout()">Salir</button>
     </div>
   </div>
 
-  <!-- Debug panel -->
-  <button id="debug-toggle" onclick="toggleDebug()">▶ Debug SSE (click para expandir)</button>
-  <div id="debug-panel" style="display:none">Esperando eventos SSE...</div>
-
-  <!-- Input -->
-  <div class="input-area">
-    <textarea id="msg-input" rows="1" placeholder="Escribí tu mensaje..."></textarea>
-    <button id="btn-send" type="button" onclick="send()">Enviar</button>
+  <div id="chat">
+    <div class="bubble-wrap bot">
+      <div class="sender-label">🤖 ScoutAI</div>
+      <div class="bubble">¡Hola! Soy ScoutAI. Podés pedirme análisis de partidos, combinadas del día, o preguntarme cuándo juega tu equipo. ¿En qué te ayudo?</div>
+    </div>
   </div>
 
+  <div class="input-area">
+    <textarea id="msg-input" rows="1" placeholder="Preguntame sobre un partido..."></textarea>
+    <button id="btn-send" onclick="send()">Enviar</button>
+  </div>
+</div>
+
+
 <script>
-  // ── Debug helpers ──────────────────────────────────────────────────
-  let _debugOpen = false;
-  function toggleDebug() {
-    _debugOpen = !_debugOpen;
-    const panel = document.getElementById("debug-panel");
-    const btn   = document.getElementById("debug-toggle");
-    panel.style.display = _debugOpen ? "block" : "none";
-    btn.textContent = (_debugOpen ? "▼" : "▶") + " Debug SSE (click para expandir)";
-  }
-  function dbg(msg) {
-    const ts = new Date().toLocaleTimeString("es", { hour12: false, hour:"2-digit", minute:"2-digit", second:"2-digit", fractionalSecondDigits: 2 });
-    const panel = document.getElementById("debug-panel");
-    panel.textContent += `[${ts}] ${msg}\n`;
-    panel.scrollTop = panel.scrollHeight;
-    console.debug("[SSE]", msg);
-  }
+  const SUPABASE_URL  = "https://vyjkjyciwifrbfuhbyrk.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5amtqeWNpd2lmcmJmdWhieXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzg4OTUsImV4cCI6MjA5NTY1NDg5NX0.Nu3mAGcUnBpxuMwIDXB2nBmxfk06KMVVgGqfzwOr4Q4";
+  const BASE_URL      = "https://analizador-fut-islandia.onrender.com";
 
-  // ── Page-reload detection ───────────────────────────────────────────
-  // Stamp the page title with load time so a reload is obvious
-  document.title = "⚽ Chat — cargado " + new Date().toLocaleTimeString("es");
+  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  let _session = null;
+  let _authMode = "login";
 
-  // Detect navigation type on load (reload vs navigate vs back_forward)
-  (function logNavType() {
-    const nav = performance.getEntriesByType("navigation")[0];
-    const type = nav ? nav.type : "desconocido";
-    dbg(`Tipo de navegación al cargar: "${type}"`);
-  })();
-
-  // Intercept JS-initiated reloads/navigations
-  try {
-    const _origReload = location.reload.bind(location);
-    location.reload = function(...args) {
-      dbg("🔴 location.reload() interceptado por JS!");
-      _origReload(...args);
-    };
-    const _origAssign = location.assign.bind(location);
-    location.assign = function(url) {
-      dbg("🔴 location.assign(" + url + ") interceptado por JS!");
-      _origAssign(url);
-    };
-    const _origPushState = history.pushState.bind(history);
-    history.pushState = function(...args) {
-      dbg("🔴 history.pushState(" + args[2] + ") interceptado");
-      _origPushState(...args);
-    };
-    const _origReplaceState = history.replaceState.bind(history);
-    history.replaceState = function(...args) {
-      dbg("🔴 history.replaceState(" + args[2] + ") interceptado");
-      _origReplaceState(...args);
-    };
-  } catch(e) { dbg("No se pudieron interceptar las navegaciones: " + e); }
-
-  // Log response headers from the fetch to detect server-side redirects or weird headers
-  async function logResponseHeaders(res) {
-    const relevant = ["content-type","location","refresh","x-reload","cache-control"];
-    const found = [];
-    for (const h of relevant) {
-      const v = res.headers.get(h);
-      if (v) found.push(`${h}: ${v}`);
+  // ── Estado de autenticación ──────────────────────────────
+  _sb.auth.onAuthStateChange((event, session) => {
+    _session = session;
+    if (session) {
+      const nombre = session.user.user_metadata?.nombre || session.user.email.split("@")[0];
+      enterApp(nombre);
+    } else {
+      exitApp();
     }
-    if (found.length) dbg("Headers respuesta: " + found.join(" | "));
-  }
-
-  // Save debug log to localStorage BEFORE any unload (reload/navigate)
-  window.addEventListener("beforeunload", () => {
-    const panel = document.getElementById("debug-panel");
-    const log = panel.textContent;
-    if (log && log !== "Esperando eventos SSE...") {
-      localStorage.setItem("sse_debug_prev", "[ANTES DEL RELOAD - " + new Date().toLocaleTimeString("es") + "]\n" + log);
-    }
-    // This alert will only fire if something is really navigating
-    console.warn("⚠️ BEFOREUNLOAD DISPARADO — la página se está recargando/navegando");
   });
 
-  // On load: if there was a previous debug log (= page reloaded), show it
-  (function restorePrevDebug() {
-    const prev = localStorage.getItem("sse_debug_prev");
-    if (!prev) return;
-    localStorage.removeItem("sse_debug_prev");
-    const panel = document.getElementById("debug-panel");
-    panel.textContent = prev + "\n═══ NUEVA CARGA ═══\n";
-    // Auto-open so the user sees it
-    _debugOpen = false;
-    toggleDebug();
-    dbg("ℹ️ Log de sesión anterior restaurado (la página fue recargada)");
-  })();
+  function enterApp(nombre) {
+    document.getElementById("landing").classList.add("hidden");
+    document.getElementById("auth-modal").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    document.getElementById("user-label").textContent = "👤 " + nombre;
+  }
 
-  // Catch any unhandled JS errors so they show in the chat instead of silently breaking
-  window.onerror = (msg, src, line) => {
-    dbg(`⚠️ JS Error: ${msg} (${src}:${line})`);
-    addBubble("bot", "chat", `⚠️ JS Error: ${msg} (${src}:${line})`);
-    return true;
-  };
-  window.onunhandledrejection = (e) => {
-    dbg(`⚠️ Promise error: ${e.reason}`);
-    addBubble("bot", "chat", `⚠️ Promise error: ${e.reason}`);
-  };
+  function exitApp() {
+    document.getElementById("app").classList.add("hidden");
+    document.getElementById("auth-modal").classList.add("hidden");
+    document.getElementById("landing").classList.remove("hidden");
+  }
 
-  let sessionId = "test_" + Math.random().toString(36).slice(2, 8);
+  // ── Modal de auth ────────────────────────────────────────
+  function openAuth(mode) {
+    switchTab(mode);
+    document.getElementById("auth-modal").classList.remove("hidden");
+  }
 
-  // Auto-resize textarea
+  function closeAuth() {
+    document.getElementById("auth-modal").classList.add("hidden");
+    clearMsg();
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById("auth-modal")) closeAuth();
+  }
+
+  function switchTab(mode) {
+    _authMode = mode;
+    document.getElementById("tab-login").classList.toggle("active", mode === "login");
+    document.getElementById("tab-register").classList.toggle("active", mode === "register");
+    document.getElementById("auth-submit").textContent = mode === "login" ? "Iniciar sesión" : "Crear cuenta";
+    document.getElementById("auth-hint").textContent   = mode === "login" ? "Iniciá sesión para continuar" : "Creá tu cuenta gratis";
+    document.getElementById("field-nombre").style.display = mode === "register" ? "block" : "none";
+    clearMsg();
+  }
+
+  function showMsg(text, type) {
+    const el = document.getElementById("auth-msg");
+    el.textContent = text;
+    el.className = "auth-msg " + type;
+  }
+
+  function clearMsg() {
+    const el = document.getElementById("auth-msg");
+    el.textContent = ""; el.className = "auth-msg";
+  }
+
+  async function authAction() {
+    const email  = document.getElementById("auth-email").value.trim();
+    const pass   = document.getElementById("auth-pass").value;
+    const nombre = document.getElementById("auth-nombre").value.trim();
+
+    if (!email || !pass) { showMsg("Completá email y contraseña.", "error"); return; }
+    if (_authMode === "register" && !nombre) { showMsg("Completá tu nombre.", "error"); return; }
+
+    const btn = document.getElementById("auth-submit");
+    btn.disabled = true; btn.textContent = "Cargando..."; clearMsg();
+
+    try {
+      let result;
+      if (_authMode === "login") {
+        result = await _sb.auth.signInWithPassword({ email, password: pass });
+      } else {
+        result = await _sb.auth.signUp({ email, password: pass, options: { data: { nombre } } });
+        if (!result.error && result.data?.user?.identities?.length === 0) {
+          showMsg("Ese email ya está registrado. Iniciá sesión.", "error"); return;
+        }
+        if (!result.error && !result.data?.session) {
+          switchTab("login");
+          showMsg("¡Cuenta creada! Revisá tu email para confirmar.", "success"); return;
+        }
+      }
+      if (result.error) showMsg(result.error.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = _authMode === "login" ? "Iniciar sesión" : "Crear cuenta";
+    }
+  }
+
+  async function logout() { await _sb.auth.signOut(); }
+
+  ["auth-email","auth-pass","auth-nombre"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") authAction(); });
+  });
+
+  // ── Chat ─────────────────────────────────────────────────
+  let sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+
   const input = document.getElementById("msg-input");
   input.addEventListener("input", () => {
     input.style.height = "auto";
@@ -342,31 +571,28 @@
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
 
-  function getBaseUrl() {
-    return document.getElementById("base-url").value.replace(/\/$/, "");
-  }
-
   function newChat() {
-    sessionId = "test_" + Math.random().toString(36).slice(2, 8);
-    const chat = document.getElementById("chat");
-    chat.innerHTML = "";
-    addBubble("bot", "chat", "Nueva sesión iniciada. ID: " + sessionId);
+    sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+    document.getElementById("chat").innerHTML = `
+      <div class="bubble-wrap bot">
+        <div class="sender-label">🤖 ScoutAI</div>
+        <div class="bubble">Nueva sesión iniciada. ¿En qué te ayudo?</div>
+      </div>`;
   }
 
   function scrollToBottom() {
-    const chat = document.getElementById("chat");
-    chat.scrollTop = chat.scrollHeight;
+    const c = document.getElementById("chat");
+    c.scrollTop = c.scrollHeight;
   }
 
   function addBubble(who, type, content, header = null) {
-    dbg(`addBubble(${who}, ${type}, contentLen=${(content||"").length}, header=${header ? "yes" : "no"})`);
     const chat = document.getElementById("chat");
     const wrap = document.createElement("div");
     wrap.className = `bubble-wrap ${who}`;
 
     const label = document.createElement("div");
     label.className = "sender-label";
-    label.textContent = who === "user" ? "👤 Vos" : "🤖 Bot";
+    label.textContent = who === "user" ? "👤 Vos" : "🤖 ScoutAI";
 
     const bubble = document.createElement("div");
     bubble.className = "bubble";
@@ -377,16 +603,9 @@
       hdr.className = "analysis-header";
       hdr.textContent = header;
       bubble.appendChild(hdr);
-
-      // Limpiar espacios extra y dividir en párrafos
       const body = document.createElement("div");
       body.className = "analysis-body";
-      const paras = content
-        .replace(/\n[ \t]+\n/g, "\n\n")   // "newline espacio newline" → doble salto
-        .split(/\n{2,}/)
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-      paras.forEach(para => {
+      content.replace(/\n[ \t]+\n/g, "\n\n").split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(para => {
         const div = document.createElement("div");
         div.className = "para" + (para.startsWith("⚠️") ? " warning" : "");
         div.textContent = para;
@@ -404,29 +623,26 @@
     wrap.appendChild(bubble);
     chat.appendChild(wrap);
     scrollToBottom();
-    dbg(`  → bubble added to DOM (chat children: ${chat.childElementCount})`);
     return bubble;
   }
 
-  function addStatus(message) {
+  function addStatus(msg) {
     const chat = document.getElementById("chat");
     const wrap = document.createElement("div");
-    wrap.className = "status-wrap";
-    wrap.id = "current-status";
-    wrap.innerHTML = `<div class="spinner"></div><span>${message}</span>`;
+    wrap.className = "status-wrap"; wrap.id = "current-status";
+    wrap.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
     chat.appendChild(wrap);
     scrollToBottom();
   }
 
-  function updateStatus(message) {
+  function updateStatus(msg) {
     const el = document.getElementById("current-status");
-    if (el) el.querySelector("span").textContent = message;
+    if (el) el.querySelector("span").textContent = msg;
     scrollToBottom();
   }
 
   function removeStatus() {
     const el = document.getElementById("current-status");
-    dbg(`removeStatus() → element ${el ? "found & removed" : "not found (already gone)"}`);
     if (el) el.remove();
   }
 
@@ -434,97 +650,70 @@
     const msgInput = document.getElementById("msg-input");
     const btnSend  = document.getElementById("btn-send");
     const message  = msgInput.value.trim();
-    if (!message) return;
+    if (!message || !_session) return;
 
-    msgInput.value = "";
-    msgInput.style.height = "auto";
+    msgInput.value = ""; msgInput.style.height = "auto";
     btnSend.disabled = true;
-
     addBubble("user", "chat", message);
     addStatus("💬 Conectando...");
 
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token || "";
+
     try {
-      const res = await fetch(`${getBaseUrl()}/api/chat`, {
+      const res = await fetch(`${BASE_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ message, session_id: sessionId })
       });
 
       if (!res.ok) {
         removeStatus();
-        addBubble("bot", "chat", `❌ Error HTTP ${res.status}: ${await res.text()}`);
+        const detail = await res.json().catch(() => ({ detail: res.statusText }));
+        const msg = res.status === 429
+          ? "⏳ " + detail.detail
+          : `❌ Error ${res.status}: ${detail.detail || res.statusText}`;
+        addBubble("bot", "chat", msg);
         return;
       }
 
-      await logResponseHeaders(res);
-      dbg("--- nueva petición SSE ---");
-      const reader  = res.body.getReader();
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer    = "";
-      let curEvent  = "message";
-      let streamDone = false;
+      let buffer = "", curEvent = "message", streamDone = false;
 
-      while (true) {
+      while (!streamDone) {
         const { value, done } = await reader.read();
-        if (done) { dbg("reader.done = true → saliendo"); break; }
-
-        const chunk = decoder.decode(value, { stream: true });
-        // Show raw chunk (escape newlines for display)
-        dbg(`chunk(${chunk.length}b): ${chunk.replace(/\r/g,"\\r").replace(/\n/g,"\\n")}`);
-        buffer += chunk;
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
-        buffer = lines.pop(); // keep incomplete line
+        buffer = lines.pop();
 
         for (const line of lines) {
-          // Strip any trailing \r (in case server uses \r\n)
-          const cleanLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+          const clean = line.endsWith("\r") ? line.slice(0, -1) : line;
+          if (clean.startsWith("event: ")) { curEvent = clean.slice(7).trim(); continue; }
+          if (!clean.startsWith("data: ")) continue;
+          let data; try { data = JSON.parse(clean.slice(6)); } catch { continue; }
 
-          if (cleanLine.startsWith("event: ")) {
-            curEvent = cleanLine.slice(7).trim();
-            dbg(`  event → "${curEvent}"`);
-          } else if (cleanLine.startsWith("data: ")) {
-            const rawData = cleanLine.slice(6);
-            let data;
-            try {
-              data = JSON.parse(rawData);
-              dbg(`  data(${curEvent}): type=${data.type||"–"} contentLen=${(data.content||data.message||"").length}`);
-            } catch(e) {
-              dbg(`  ⚠️ JSON.parse FALLÓ: ${e.message} | raw="${rawData.slice(0,80)}"`);
-              continue;
-            }
-
-            if (curEvent === "status") {
-              updateStatus(data.message);
-            } else if (curEvent === "response") {
-              removeStatus();
-              if (data.type === "analysis") {
-                addBubble("bot", "analysis", data.content, data.header);
-              } else if (data.type === "combinada") {
-                addBubble("bot", "combinada", data.content);
-              } else {
-                addBubble("bot", "chat", data.content);
-              }
-            } else if (curEvent === "error") {
-              removeStatus();
-              addBubble("bot", "chat", "❌ Error del servidor: " + data.message);
-              streamDone = true;
-            } else if (curEvent === "done") {
-              removeStatus();
-              streamDone = true;
-              dbg("  stream done ✓");
-            }
-            curEvent = "message";
-            if (streamDone) break;
-          } else if (cleanLine === "") {
-            // blank line = SSE event boundary, ignore
-          } else {
-            dbg(`  línea desconocida: "${cleanLine}"`);
+          if (curEvent === "status") {
+            updateStatus(data.message);
+          } else if (curEvent === "response") {
+            removeStatus();
+            if (data.type === "analysis") addBubble("bot", "analysis", data.content, data.header);
+            else if (data.type === "combinada") addBubble("bot", "combinada", data.content);
+            else addBubble("bot", "chat", data.content);
+          } else if (curEvent === "error") {
+            removeStatus();
+            addBubble("bot", "chat", "❌ " + data.message);
+            streamDone = true;
+          } else if (curEvent === "done") {
+            removeStatus(); streamDone = true;
           }
+          curEvent = "message";
         }
       }
     } catch (err) {
       removeStatus();
-      addBubble("bot", "chat", "❌ No se pudo conectar al backend: " + err.message);
+      addBubble("bot", "chat", "❌ No se pudo conectar: " + err.message);
     } finally {
       btnSend.disabled = false;
       msgInput.focus();
