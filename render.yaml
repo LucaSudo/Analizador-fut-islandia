@@ -2,8 +2,9 @@ services:
   - type: web
     name: analizador-futbol
     runtime: python
+    pythonVersion: "3.11.9"
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: bash start.sh
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: GROQ_API_KEY
