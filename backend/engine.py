@@ -854,7 +854,14 @@ def hacer_combinada_auto(n_picks: int = 2, progress_cb=None, liga_filtro: str = 
 
     n_liga = len(partidos)
     partidos_hoy = [p for p in partidos if p[3]]
-    candidatos   = partidos_hoy if partidos_hoy else partidos
+    # Priorizar partidos de hoy/en curso, pero si hay menos de 3 completar
+    # con los próximos para no quedar atrapado en una sola liga (ej: solo
+    # la Liga 1 Perú juega de noche en hora ARG → era el único [HOY]).
+    if len(partidos_hoy) >= 3:
+        candidatos = partidos_hoy
+    else:
+        resto      = [p for p in partidos if not p[3]]
+        candidatos = partidos_hoy + resto
 
     sesion = _nueva_sesion(); todos_picks = []; partidos_analizados = []
 

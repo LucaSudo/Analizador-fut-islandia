@@ -20,6 +20,22 @@
        Hay un espacio antes del paréntesis de cierre. Bug de formato
        en el armado del texto de líneas.
 
+── COMBINADA AUTO ─────────────────────────────────────────────
+
+[X] 7. RESUELTO — "siempre agarra Perú" era un BUG REAL.
+       La combinada AUTO descartaba TODOS los partidos si existía al
+       menos uno con [HOY]/[EN CURSO]. Como Liga 1 Perú juega de noche
+       (hora ARG), su partido en curso era el único [HOY] → quedaba
+       atrapada analizando solo ese.
+       FIX: si hay <3 partidos de hoy, se completan con los próximos
+       (engine.py hacer_combinada_auto, ~línea 856).
+
+[ ] 8. Combinada no genera picks con equipos de poco historial.
+       Sport Boys / Comerciantes Unidos tienen pocas stats en SofaScore.
+       Puede ser limitación de datos legítima, NO necesariamente umbral
+       estricto. Revisar el umbral SOLO si se repite con ligas grandes
+       (Premier, La Liga) donde sí hay historial completo.
+
 ═══════════════════════════════════════════════════════════════
   PENDIENTES CONOCIDOS (de sesiones previas)
 ═══════════════════════════════════════════════════════════════
