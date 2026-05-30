@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://scoutai.onrender.com/api/health)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://scoutai-b7gn.onrender.com/api/health)
           echo "Status: $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "⚠️  El servidor respondió con HTTP $STATUS"
