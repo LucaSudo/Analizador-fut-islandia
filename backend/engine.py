@@ -33,6 +33,7 @@ from curl_cffi import requests as cf_requests
 from groq import Groq
 
 import session_store
+import cache_manager
 from fixture_loader import cargar_proximos_partidos
 import fixture_loader as _fl
 from memory import guardar_prediccion, generar_contexto_memoria, verificar_predicciones
@@ -86,6 +87,12 @@ _STATS_A_PRECOMPUTAR = [
 # ── SofaScore scraping ───────────────────────────────────────────────
 
 def obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, ultimas_rondas=5):
+    # ── Cache check ──────────────────────────────────────────────────
+    cached = cache_manager.get_partidos_equipo(nombre_equipo, liga_id, temporada_id)
+    if cached is not None:
+        print(f"[cache] partidos {nombre_equipo} → hit")
+        return cached[:ultimas_rondas]
+
     ahora  = datetime.now().timestamp()
     cutoff = ahora - MAX_DIAS_HISTORIAL * 86400
     partidos = []
@@ -106,10 +113,19 @@ def obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas
             break
 
     partidos.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
-    return partidos[:ultimas_rondas]
+    result = partidos[:ultimas_rondas]
+    if result:
+        cache_manager.set_partidos_equipo(nombre_equipo, liga_id, temporada_id, result)
+    return result
 
 
 def obtener_estadisticas(sesion, evento_id):
+    # ── Cache check ──────────────────────────────────────────────────
+    cached = cache_manager.get_stats_partido(evento_id)
+    if cached is not None:
+        print(f"[cache] stats evento {evento_id} → hit")
+        return cached
+
     try:
         data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics")
         stats = {}
@@ -120,6 +136,8 @@ def obtener_estadisticas(sesion, evento_id):
                     clave = f"{periodo}_{item['name']}"
                     if clave not in stats:
                         stats[clave] = {"home": item.get("home", "?"), "away": item.get("away", "?")}
+        if stats:
+            cache_manager.set_stats_partido(evento_id, stats)
         return stats
     except Exception:
         return {}
