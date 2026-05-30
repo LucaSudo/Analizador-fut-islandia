@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚽ Chat Fútbol — Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: #16213e;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .topbar label { font-size: 12px; color: #888; white-space: nowrap; }
+    .topbar input {
+      flex: 1;
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #e0e0e0;
+      font-size: 13px;
+      outline: none;
+    }
+    .topbar input:focus { border-color: #4fc3f7; }
+    .btn-new {
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      color: #e0e0e0;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-new:hover { background: #1a4a8a; }
+
+    /* ── Chat area ── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .bubble-wrap { display: flex; flex-direction: column; }
+    .bubble-wrap.user { align-items: flex-end; }
+    .bubble-wrap.bot  { align-items: flex-start; }
+
+    .sender-label {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 3px;
+      padding: 0 4px;
+    }
+    .bubble-wrap.bot .sender-label { color: #4fc3f7; }
+
+    .bubble {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bubble-wrap.user .bubble {
+      background: #0f3460;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble-wrap.bot .bubble {
+      background: #16213e;
+      border: 1px solid #1f3a6e;
+      border-bottom-left-radius: 4px;
+    }
+
+    /* Analysis bubble */
+    .bubble.analysis { background: #0d2137; border-color: #1a5276; }
+    .analysis-header {
+      font-size: 13px;
+      color: #4fc3f7;
+      border-bottom: 1px solid #1a5276;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      white-space: pre-wrap;
+    }
+    .analysis-body { font-size: 14px; line-height: 1.6; }
+    .analysis-body .para {
+      padding: 9px 0;
+    }
+    .analysis-body .para + .para {
+      border-top: 1px solid rgba(79, 195, 247, 0.12);
+    }
+    .analysis-body .para.warning {
+      color: #888;
+      font-size: 12.5px;
+      font-style: italic;
+      border-top: 1px solid rgba(79, 195, 247, 0.08) !important;
+      padding-top: 10px;
+    }
+
+    /* Combinada bubble */
+    .bubble.combinada { background: #0d1f0d; border-color: #1e4620; }
+
+    /* Status indicator */
+    .status-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #888;
+      font-size: 13px;
+      padding: 4px 0;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #333;
+      border-top-color: #4fc3f7;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Debug panel ── */
+    #debug-panel {
+      background: #0a0a1a;
+      border-top: 1px solid #1a3a1a;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #4caf50;
+      font-family: monospace;
+      max-height: 140px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    #debug-toggle {
+      background: #0a0a1a;
+      border: none;
+      border-top: 1px solid #1a3a1a;
+      color: #4caf50;
+      font-size: 10px;
+      font-family: monospace;
+      padding: 2px 12px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+
+    /* ── Input area ── */
+    .input-area {
+      background: #16213e;
+      border-top: 1px solid #0f3460;
+      padding: 12px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    #msg-input {
+      flex: 1;
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+      resize: none;
+      min-height: 42px;
+      max-height: 120px;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    #msg-input:focus { border-color: #4fc3f7; }
+    #msg-input::placeholder { color: #555; }
+    #btn-send {
+      background: #1565c0;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+      height: 42px;
+    }
+    #btn-send:hover:not(:disabled) { background: #1976d2; }
+    #btn-send:disabled { background: #333; color: #666; cursor: default; }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar: backend URL + new chat -->
+  <div class="topbar">
+    <label for="base-url">Backend URL:</label>
+    <input id="base-url" type="text" value="http://localhost:8000" placeholder="https://xxxx.ngrok-free.app" />
+    <button class="btn-new" type="button" onclick="newChat()">🔄 Nueva sesión</button>
+  </div>
+
+  <!-- Chat messages -->
+  <div id="chat">
+    <div class="bubble-wrap bot">
+      <div class="sender-label">🤖 Bot</div>
+      <div class="bubble">¡Buenas! Conectate al backend y empezá a chatear. Podés pegar la URL de ngrok arriba si estás probando desde otro dispositivo.</div>
+    </div>
+  </div>
+
+  <!-- Debug panel -->
+  <button id="debug-toggle" onclick="toggleDebug()">▶ Debug SSE (click para expandir)</button>
+  <div id="debug-panel" style="display:none">Esperando eventos SSE...</div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <textarea id="msg-input" rows="1" placeholder="Escribí tu mensaje..."></textarea>
+    <button id="btn-send" type="button" onclick="send()">Enviar</button>
+  </div>
+
+<script>
+  // ── Debug helpers ──────────────────────────────────────────────────
+  let _debugOpen = false;
+  function toggleDebug() {
+    _debugOpen = !_debugOpen;
+    const panel = document.getElementById("debug-panel");
+    const btn   = document.getElementById("debug-toggle");
+    panel.style.display = _debugOpen ? "block" : "none";
+    btn.textContent = (_debugOpen ? "▼" : "▶") + " Debug SSE (click para expandir)";
+  }
+  function dbg(msg) {
+    const ts = new Date().toLocaleTimeString("es", { hour12: false, hour:"2-digit", minute:"2-digit", second:"2-digit", fractionalSecondDigits: 2 });
+    const panel = document.getElementById("debug-panel");
+    panel.textContent += `[${ts}] ${msg}\n`;
+    panel.scrollTop = panel.scrollHeight;
+    console.debug("[SSE]", msg);
+  }
+
+  // ── Page-reload detection ───────────────────────────────────────────
+  // Stamp the page title with load time so a reload is obvious
+  document.title = "⚽ Chat — cargado " + new Date().toLocaleTimeString("es");
+
+  // Detect navigation type on load (reload vs navigate vs back_forward)
+  (function logNavType() {
+    const nav = performance.getEntriesByType("navigation")[0];
+    const type = nav ? nav.type : "desconocido";
+    dbg(`Tipo de navegación al cargar: "${type}"`);
+  })();
+
+  // Intercept JS-initiated reloads/navigations
+  try {
+    const _origReload = location.reload.bind(location);
+    location.reload = function(...args) {
+      dbg("🔴 location.reload() interceptado por JS!");
+      _origReload(...args);
+    };
+    const _origAssign = location.assign.bind(location);
+    location.assign = function(url) {
+      dbg("🔴 location.assign(" + url + ") interceptado por JS!");
+      _origAssign(url);
+    };
+    const _origPushState = history.pushState.bind(history);
+    history.pushState = function(...args) {
+      dbg("🔴 history.pushState(" + args[2] + ") interceptado");
+      _origPushState(...args);
+    };
+    const _origReplaceState = history.replaceState.bind(history);
+    history.replaceState = function(...args) {
+      dbg("🔴 history.replaceState(" + args[2] + ") interceptado");
+      _origReplaceState(...args);
+    };
+  } catch(e) { dbg("No se pudieron interceptar las navegaciones: " + e); }
+
+  // Log response headers from the fetch to detect server-side redirects or weird headers
+  async function logResponseHeaders(res) {
+    const relevant = ["content-type","location","refresh","x-reload","cache-control"];
+    const found = [];
+    for (const h of relevant) {
+      const v = res.headers.get(h);
+      if (v) found.push(`${h}: ${v}`);
+    }
+    if (found.length) dbg("Headers respuesta: " + found.join(" | "));
+  }
+
+  // Save debug log to localStorage BEFORE any unload (reload/navigate)
+  window.addEventListener("beforeunload", () => {
+    const panel = document.getElementById("debug-panel");
+    const log = panel.textContent;
+    if (log && log !== "Esperando eventos SSE...") {
+      localStorage.setItem("sse_debug_prev", "[ANTES DEL RELOAD - " + new Date().toLocaleTimeString("es") + "]\n" + log);
+    }
+    // This alert will only fire if something is really navigating
+    console.warn("⚠️ BEFOREUNLOAD DISPARADO — la página se está recargando/navegando");
+  });
+
+  // On load: if there was a previous debug log (= page reloaded), show it
+  (function restorePrevDebug() {
+    const prev = localStorage.getItem("sse_debug_prev");
+    if (!prev) return;
+    localStorage.removeItem("sse_debug_prev");
+    const panel = document.getElementById("debug-panel");
+    panel.textContent = prev + "\n═══ NUEVA CARGA ═══\n";
+    // Auto-open so the user sees it
+    _debugOpen = false;
+    toggleDebug();
+    dbg("ℹ️ Log de sesión anterior restaurado (la página fue recargada)");
+  })();
+
+  // Catch any unhandled JS errors so they show in the chat instead of silently breaking
+  window.onerror = (msg, src, line) => {
+    dbg(`⚠️ JS Error: ${msg} (${src}:${line})`);
+    addBubble("bot", "chat", `⚠️ JS Error: ${msg} (${src}:${line})`);
+    return true;
+  };
+  window.onunhandledrejection = (e) => {
+    dbg(`⚠️ Promise error: ${e.reason}`);
+    addBubble("bot", "chat", `⚠️ Promise error: ${e.reason}`);
+  };
+
+  let sessionId = "test_" + Math.random().toString(36).slice(2, 8);
+
+  // Auto-resize textarea
+  const input = document.getElementById("msg-input");
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  function getBaseUrl() {
+    return document.getElementById("base-url").value.replace(/\/$/, "");
+  }
+
+  function newChat() {
+    sessionId = "test_" + Math.random().toString(36).slice(2, 8);
+    const chat = document.getElementById("chat");
+    chat.innerHTML = "";
+    addBubble("bot", "chat", "Nueva sesión iniciada. ID: " + sessionId);
+  }
+
+  function scrollToBottom() {
+    const chat = document.getElementById("chat");
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function addBubble(who, type, content, header = null) {
+    dbg(`addBubble(${who}, ${type}, contentLen=${(content||"").length}, header=${header ? "yes" : "no"})`);
+    const chat = document.getElementById("chat");
+    const wrap = document.createElement("div");
+    wrap.className = `bubble-wrap ${who}`;
+
+    const label = document.createElement("div");
+    label.className = "sender-label";
+    label.textContent = who === "user" ? "👤 Vos" : "🤖 Bot";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    if (type === "analysis" && header) {
+      bubble.classList.add("analysis");
+      const hdr = document.createElement("div");
+      hdr.className = "analysis-header";
+      hdr.textContent = header;
+      bubble.appendChild(hdr);
+
+      // Limpiar espacios extra y dividir en párrafos
+      const body = document.createElement("div");
+      body.className = "analysis-body";
+      const paras = content
+        .replace(/\n[ \t]+\n/g, "\n\n")   // "newline espacio newline" → doble salto
+        .split(/\n{2,}/)
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+      paras.forEach(para => {
+        const div = document.createElement("div");
+        div.className = "para" + (para.startsWith("⚠️") ? " warning" : "");
+        div.textContent = para;
+        body.appendChild(div);
+      });
+      bubble.appendChild(body);
+    } else if (type === "combinada") {
+      bubble.classList.add("combinada");
+      bubble.textContent = content;
+    } else {
+      bubble.textContent = content;
+    }
+
+    wrap.appendChild(label);
+    wrap.appendChild(bubble);
+    chat.appendChild(wrap);
+    scrollToBottom();
+    dbg(`  → bubble added to DOM (chat children: ${chat.childElementCount})`);
+    return bubble;
+  }
+
+  function addStatus(message) {
+    const chat = document.getElementById("chat");
+    const wrap = document.createElement("div");
+    wrap.className = "status-wrap";
+    wrap.id = "current-status";
+    wrap.innerHTML = `<div class="spinner"></div><span>${message}</span>`;
+    chat.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function updateStatus(message) {
+    const el = document.getElementById("current-status");
+    if (el) el.querySelector("span").textContent = message;
+    scrollToBottom();
+  }
+
+  function removeStatus() {
+    const el = document.getElementById("current-status");
+    dbg(`removeStatus() → element ${el ? "found & removed" : "not found (already gone)"}`);
+    if (el) el.remove();
+  }
+
+  async function send() {
+    const msgInput = document.getElementById("msg-input");
+    const btnSend  = document.getElementById("btn-send");
+    const message  = msgInput.value.trim();
+    if (!message) return;
+
+    msgInput.value = "";
+    msgInput.style.height = "auto";
+    btnSend.disabled = true;
+
+    addBubble("user", "chat", message);
+    addStatus("💬 Conectando...");
+
+    try {
+      const res = await fetch(`${getBaseUrl()}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, session_id: sessionId })
+      });
+
+      if (!res.ok) {
+        removeStatus();
+        addBubble("bot", "chat", `❌ Error HTTP ${res.status}: ${await res.text()}`);
+        return;
+      }
+
+      await logResponseHeaders(res);
+      dbg("--- nueva petición SSE ---");
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer    = "";
+      let curEvent  = "message";
+      let streamDone = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) { dbg("reader.done = true → saliendo"); break; }
+
+        const chunk = decoder.decode(value, { stream: true });
+        // Show raw chunk (escape newlines for display)
+        dbg(`chunk(${chunk.length}b): ${chunk.replace(/\r/g,"\\r").replace(/\n/g,"\\n")}`);
+        buffer += chunk;
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          // Strip any trailing \r (in case server uses \r\n)
+          const cleanLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+
+          if (cleanLine.startsWith("event: ")) {
+            curEvent = cleanLine.slice(7).trim();
+            dbg(`  event → "${curEvent}"`);
+          } else if (cleanLine.startsWith("data: ")) {
+            const rawData = cleanLine.slice(6);
+            let data;
+            try {
+              data = JSON.parse(rawData);
+              dbg(`  data(${curEvent}): type=${data.type||"–"} contentLen=${(data.content||data.message||"").length}`);
+            } catch(e) {
+              dbg(`  ⚠️ JSON.parse FALLÓ: ${e.message} | raw="${rawData.slice(0,80)}"`);
+              continue;
+            }
+
+            if (curEvent === "status") {
+              updateStatus(data.message);
+            } else if (curEvent === "response") {
+              removeStatus();
+              if (data.type === "analysis") {
+                addBubble("bot", "analysis", data.content, data.header);
+              } else if (data.type === "combinada") {
+                addBubble("bot", "combinada", data.content);
+              } else {
+                addBubble("bot", "chat", data.content);
+              }
+            } else if (curEvent === "error") {
+              removeStatus();
+              addBubble("bot", "chat", "❌ Error del servidor: " + data.message);
+              streamDone = true;
+            } else if (curEvent === "done") {
+              removeStatus();
+              streamDone = true;
+              dbg("  stream done ✓");
+            }
+            curEvent = "message";
+            if (streamDone) break;
+          } else if (cleanLine === "") {
+            // blank line = SSE event boundary, ignore
+          } else {
+            dbg(`  línea desconocida: "${cleanLine}"`);
+          }
+        }
+      }
+    } catch (err) {
+      removeStatus();
+      addBubble("bot", "chat", "❌ No se pudo conectar al backend: " + err.message);
+    } finally {
+      btnSend.disabled = false;
+      msgInput.focus();
+    }
+  }
+</script>
+</body>
+</html>

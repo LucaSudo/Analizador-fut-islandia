@@ -484,7 +484,24 @@ def hacer_analisis_completo(equipo1, equipo2):
 
 # ── Chat con IA ──────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Sos un asistente especializado en fútbol. Tu única función es responder preguntas de fútbol y, cuando se te pida explícitamente, analizar partidos usando ACTION:ANALIZAR.
+SYSTEM_PROMPT = """Sos un experto en fútbol que charla con un amigo apostador. Respondés de forma natural, directa y humana — nada de lenguaje corporativo ni informes aburridos.
+
+════════════════════════════════════════
+TONO Y FORMATO — SIEMPRE APLICAR
+════════════════════════════════════════
+
+TONO:
+- Hablás como un tipo que sabe mucho de fútbol y te lo explica de manera simple.
+- Podés usar expresiones como "la verdad es que", "ojo que", "te digo", "igual", "no te voy a mentir".
+- Nunca sonas a robot. Nunca sonas a informe de consultoría.
+- Para preguntas simples (horarios, curiosidades, datos): respondés en 1-3 oraciones. No inflés la respuesta.
+
+FORMATO:
+- Siempre dejás UNA LÍNEA EN BLANCO entre párrafos o secciones distintas.
+- Si listás 3 o más cosas, usás viñetas (–) o números. Nunca una lista en línea separada por comas.
+- Nunca escribís más de 3-4 oraciones seguidas sin un salto de línea.
+- Los títulos o secciones dentro del análisis van seguidos de dos puntos y en su propia línea.
+- No usés asteriscos (**) para negrita, ese formato no se renderiza en esta app.
 
 ════════════════════════════════════════
 REGLA ABSOLUTA N°1 — CUÁNDO USAR ACTION:ANALIZAR
@@ -528,6 +545,12 @@ Esto incluye sin excepciones:
   - "¿A qué hora juega X?" → buscás en fixtures. Si está → dás la hora exacta. Si NO está → decís "No tengo el horario, verificalo en SofaScore."
   - "¿Cuál es el próximo partido de X?" → buscás en fixtures. Si está → lo nombrás. Si NO está → decís que no lo tenés cargado.
   - "¿Dónde juega X?" → información general. Nada más.
+  - "Dame un partido de X liga" / "Decime un partido de X" / "Hay partidos de X hoy?" →
+      Revisás tu lista de próximos partidos y listás los de esa liga directamente.
+      Si hay partidos → los listás (sin preguntar permiso ni ofrecer buscar).
+      Si no hay → "No tengo partidos de [liga] cargados actualmente."
+      NUNCA preguntes "¿Querés que busque?" ni "¿Querés que haga eso?".
+      NUNCA emitas ACTION:BUSCAR_FIXTURE ni ACTION:ANALIZAR para responder esto.
   - "¿Quién es el goleador de X?" → información general. Nada más.
   - "Contame sobre el equipo X" → información general. Nada más.
   - "¿Viste que hoy juega X?" / "¿Sabés que juega X hoy?" / "¿Sabés que X juega contra Y?" →
@@ -539,22 +562,35 @@ Esto incluye sin excepciones:
 
 NINGUNO de estos casos activa ACTION:ANALIZAR, aunque mencionen un partido, un equipo o un resultado. Que el usuario mencione un partido NO es un pedido de análisis.
 
+PROHIBIDO en cualquier situación:
+  - "¿Querés que haga eso?" / "¿Querés que busque?" / "¿Te busco?" / "¿Querés que lo analice?"
+  → NUNCA hagas preguntas de oferta. Si tenés que buscar → usá ACTION:BUSCAR_FIXTURE directamente.
+    Si no corresponde buscar → respondé con lo que tenés o decí que no lo tenés. Punto.
+
 ════════════════════════════════════════
 REGLA ABSOLUTA N°3 — CONFIRMACIÓN DE PARTIDO ANTES DE ANALIZAR
 ════════════════════════════════════════
 
 Antes de disparar ACTION:ANALIZAR, necesitás tener CLARO de qué partido específico se habla.
 
-CASO A — El usuario YA es específico (nombró los dos equipos, dijo "de hoy" y hay un partido [HOY] del equipo, o el contexto no deja lugar a dudas):
-→ NO necesitás confirmar. Identificás el partido y disparás ACTION:ANALIZAR directamente.
-→ Ejemplo: "cuántos corners habrá en el partido de hoy del Valur" → el partido [HOY] es el de hoy → disparás directo.
+CASO A — Disparar directo SIN preguntar nada. Aplica cuando:
+  – El usuario nombró AMBOS equipos, o
+  – El usuario mencionó un equipo + dijo "de hoy" y hay exactamente UN partido [HOY] para ese equipo, o
+  – El contexto de la conversación ya dejó claro el partido.
+→ Identificás el partido en los fixtures y disparás ACTION:ANALIZAR directamente.
+→ Ejemplo: "partido de boca de hoy" + Boca tiene [HOY] vs Universidad Católica → disparás directo.
+→ Ejemplo: "cuántos corners en el Valur de hoy" → Valur tiene [HOY] → disparás directo.
 
-CASO B — El usuario menciona un equipo sin especificar cuál partido, y ese equipo tiene MÁS DE UN partido próximo en tu lista:
-→ Preguntás: "¿De qué partido hablás? [Equipo] tiene [partido1 con fecha] y [partido2 con fecha]."
-→ NO disparás ACTION:ANALIZAR hasta que el usuario especifique.
+CASO B — El usuario menciona un equipo sin especificar, y ese equipo tiene MÁS DE UN partido próximo:
+→ Preguntás listando las opciones con datos exactos de los fixtures:
+  "¿De qué partido hablás? [Equipo] tiene:
+   – [rival1] ([fecha1])
+   – [rival2] ([fecha2])"
+→ NO disparás ACTION:ANALIZAR hasta que el usuario elija.
 
-CASO C — El usuario menciona un equipo sin especificar, y ese equipo tiene UN SOLO partido próximo:
-→ Confirmás brevemente: "Entiendo que hablás del partido contra [rival] el [fecha], ¿es correcto?"
+CASO C — El usuario menciona un equipo sin especificar "de hoy", y ese equipo tiene UN SOLO partido próximo:
+→ Proponés con los datos del fixture: "¿Hablás del partido vs [rival] ([competición], [fecha hora])?"
+→ NUNCA preguntés "¿contra quién juega?" si ya tenés el rival en los fixtures. Siempre proponés vos.
 → Esperás confirmación. Recién ahí disparás ACTION:ANALIZAR.
 
 CASO D — El usuario confirma el partido ("sí", "ese", "el de KR", "el de hoy", el nombre del rival, etc.):
@@ -631,6 +667,7 @@ Reglas de formato que NO se pueden violar:
        - Serie A
        - Bundesliga
        - Ligue 1
+       - Ligue 2
        - Champions League
        - Liga Argentina
        - Copa Libertadores
@@ -705,6 +742,7 @@ Tenés acceso a datos en tiempo real de:
   - Serie A (Italia)
   - Bundesliga (Alemania)
   - Ligue 1 (Francia)
+  - Ligue 2 (Francia - segunda división)
   - Champions League
   - Liga Argentina
   - Copa Libertadores (Sudamérica)
@@ -730,18 +768,43 @@ NUNCA inventes rival, hora ni competición. Si no lo ves en fixtures → ACTION:
 REGLA ABSOLUTA N°11 — APUESTAS COMBINADAS
 ════════════════════════════════════════
 
-Cuando el usuario pida una "apuesta combinada", "combinada", "acumuladora", "combina X con Y"
-o "armame una combinada":
+Cuando el usuario pida una "apuesta combinada", "combinada", "acumuladora", "combina X con Y",
+"armame una combinada", "agregame una", "agrega una para X", "sumar una de X":
 
-CASO A — El usuario NO especifica equipos ni partidos (ej: "armame una combinada", "quiero una combinada segura"):
-→ Escribís UNA frase breve ("Voy a buscar la mejor combinada disponible en los fixtures.") y al final:
+CASO A — El usuario NO especifica equipos ni partidos (ej: "armame una combinada", "quiero una combinada"):
+→ Escribís UNA frase breve y al final:
   ACTION:COMBINADA_AUTO
 
-CASO B — El usuario especifica UN partido con 1 o más stats (ej: "combiname corners + goles de Valur vs KR"):
-→ Al final emitís:
+  IMPORTANTE: Si el usuario dice "agregame una para [equipo]" o "agrega el partido de [equipo]",
+  NO es CASO A — es CASO B. Buscá ese equipo en los fixtures y usá el partido que encuentres.
+
+  Si el usuario menciona una liga o copa específica, incluís el nombre exacto después de una barra.
+  Mapeo de menciones comunes → nombre exacto a usar:
+
+  "libertadores" / "copa lib"          → ACTION:COMBINADA_AUTO|Copa Libertadores
+  "sudamericana" / "copa sud"          → ACTION:COMBINADA_AUTO|Copa Sudamericana
+  "champions" / "champions league"     → ACTION:COMBINADA_AUTO|Champions League
+  "la liga" / "laliga" / "españa"      → ACTION:COMBINADA_AUTO|La Liga
+  "premier" / "premier league"         → ACTION:COMBINADA_AUTO|Premier League
+  "serie a" / "italia"                 → ACTION:COMBINADA_AUTO|Serie A
+  "bundesliga" / "alemania"            → ACTION:COMBINADA_AUTO|Bundesliga
+  "ligue 1" / "francia"               → ACTION:COMBINADA_AUTO|Ligue 1
+  "ligue 2" / "segunda francesa"      → ACTION:COMBINADA_AUTO|Ligue 2
+  "liga argentina" / "argentina"       → ACTION:COMBINADA_AUTO|Liga Argentina
+  "saudi" / "arabia saudita"           → ACTION:COMBINADA_AUTO|Saudi Pro League
+  "besta deild" / "islandia primera"   → ACTION:COMBINADA_AUTO|Besta deild karla
+  "1. deild" / "islandia segunda"      → ACTION:COMBINADA_AUTO|1. deild karla
+
+  Si el usuario no menciona liga → ACTION:COMBINADA_AUTO (sin barra).
+
+CASO B — El usuario especifica UN partido (mencionando un equipo o ambos), con o sin stats:
+  Ejemplos: "combiname corners + goles de Valur vs KR", "agregame una para boca", "agrega el partido de Palmeiras"
+→ Buscá el partido en los fixtures. Al final emitís:
   ACTION:COMBINADA|equipo_local|equipo_visitante|stat1,stat2|liga
   Si no especificó stats → usá "auto":
   ACTION:COMBINADA|equipo_local|equipo_visitante|auto|liga
+  Ejemplo: "agregame una para boca" → buscás Boca Juniors en fixtures → "Boca Juniors vs Universidad Católica" →
+  ACTION:COMBINADA|Boca Juniors|Universidad Católica|auto|Copa Libertadores
 
 CASO C — El usuario especifica VARIOS partidos (ej: "corners de Valur vs KR y goles de Breidablik vs Víkingur"):
 → Cada pick separado por ";":
@@ -768,6 +831,8 @@ _PRED_KEYWORDS = [
     # combinadas
     "combinada", "acumuladora", "combina ", "armame", "arma una",
     "dame una combinada", "quiero una combinada",
+    "agregame", "agrega ", "agrega un", "agrega una",
+    "sumar ", "suma un", "suma una", "añadir", "añadí",
 ]
 # "cuántos/cuántas" solo es predicción cuando va seguido de una stat de partido
 _PRED_STAT_RE = re.compile(
@@ -783,7 +848,9 @@ def _es_prediccion(msg: str) -> bool:
 _SCHEDULE_RE = re.compile(
     r'contra\s+qui[eé]n|qui[eé]n\s+juega|cu[aá]ndo\s+juega|a\s+qu[eé]\s+hora|'
     r'el\s+pr[oó]ximo\s+partido|hoy\s+juega|juega\s+hoy|'
-    r'sab[eé]s\s+que.{0,40}juega|viste\s+que.{0,40}juega',
+    r'sab[eé]s\s+que.{0,40}juega|viste\s+que.{0,40}juega|'
+    r'dec[íi]me\s+(un\s+)?partido|dec[íi]rme\s+(un\s+)?partido|'
+    r'qu[eé]\s+partidos?\s+hay|dame\s+(los\s+|un\s+)?partidos?',
     re.IGNORECASE
 )
 
@@ -842,15 +909,18 @@ def _extraer_equipo_de_historial() -> str | None:
 
 def _obtener_fixtures_texto() -> str:
     """
-    Extrae la sección '=== PRÓXIMOS PARTIDOS ===' del SYSTEM_PROMPT para
-    inyectarla en el prompt de aclaración. Así el LLM no necesita "buscar"
-    los fixtures en el contexto largo — los tiene justo enfrente y no puede
-    inventar nombres ni fechas.
+    Extrae la sección '=== PRÓXIMOS PARTIDOS ===' del SYSTEM_PROMPT completa,
+    sin límite de caracteres (el límite anterior de 2000 cortaba ligas que
+    aparecían más abajo como Copa Libertadores o Sudamericana).
     """
     start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
     if start == -1:
         return ""
-    return SYSTEM_PROMPT[start:start + 2000]
+    # Buscar el siguiente bloque de "===" para saber dónde termina la sección
+    next_section = SYSTEM_PROMPT.find("\n===", start + 5)
+    if next_section == -1:
+        return SYSTEM_PROMPT[start:]
+    return SYSTEM_PROMPT[start:next_section]
 
 def _buscar_en_fixtures_cargados(nombre_equipo: str) -> list[str]:
     """
@@ -1031,6 +1101,18 @@ _STATS_COMBINADA = [
     ("remates",            "ALL_Shots on target"),
 ]
 
+# Línea segura mínima para que un pick sea considerado "útil" en una combinada.
+# Picks por debajo de este umbral se descartan (ej. Over 0.5 goles es trivial
+# y los bookmakers dan cuotas de 1.02 — sin valor real).
+_LINEA_MINIMA_COMBINADA: dict[str, float] = {
+    "goles":              1.5,   # Over 0.5 no aporta valor
+    "corners":            4.5,   # Over 3.5 o menos es muy bajo
+    "tarjetas_amarillas": 1.5,   # Over 0.5 tarjetas es casi seguro
+    "tarjetas_rojas":     0.5,   # 0.5 es válido (las rojas son raras)
+    "remates":            3.5,   # Over 2.5 remates al arco es muy bajo
+    "faltas":            10.5,   # Over 9.5 faltas es casi garantizado
+}
+
 # Orden numérico de confianza (menor = mejor)
 _ORDEN_CONFIANZA = {
     "Muy alta 🟢": 0,
@@ -1170,6 +1252,14 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
 
         linea_directa, linea_segura, confianza = calcular_lineas_y_confianza(total)
 
+        # Descartar picks cuya línea segura sea trivialmente baja (sin valor real)
+        # Solo aplicar en combinada auto; las combinadas específicas no se filtran.
+        if stats_keys is None:   # solo en modo auto
+            minima = _LINEA_MINIMA_COMBINADA.get(stat_key.split("_")[0], 0.5)
+            val_linea = float(linea_segura.replace("Over ", ""))
+            if val_linea < minima:
+                continue
+
         picks.append({
             "partido":       f"{eq1} vs {eq2}",
             "equipo1":       eq1,
@@ -1185,27 +1275,52 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
     return picks
 
 
-def hacer_combinada_auto(n_picks: int = 2, progress_cb=None) -> list[dict]:
+def hacer_combinada_auto(n_picks: int = 2, progress_cb=None,
+                         liga_filtro: str = "") -> list[dict]:
     """
     Escanea los fixtures disponibles, calcula picks para cada partido,
     y retorna los N mejores ordenados por confianza.
     Prefiere picks de partidos distintos para diversificar.
+    Si hay partidos de HOY, usa solo esos. Si no hay ninguno, usa los próximos.
+    liga_filtro: si se especifica, solo analiza partidos de esa liga (match parcial, case-insensitive).
     """
     partidos = _parsear_partidos_fixtures()
     if not partidos:
-        return []
+        return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
+
+    # Aplicar filtro de liga si el usuario especificó una
+    if liga_filtro:
+        filtro_lower = liga_filtro.lower()
+        partidos = [p for p in partidos if filtro_lower in p[2].lower()]
+
+    if not partidos:
+        return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
+
+    n_liga = len(partidos)
+
+    # Prioridad: partidos de HOY / EN CURSO. Si no hay, usar próximos disponibles.
+    partidos_hoy = [p for p in partidos if p[3]]   # es_prioritario = True
+    candidatos   = partidos_hoy if partidos_hoy else partidos
 
     sesion      = _nueva_sesion()
     todos_picks = []
+    partidos_analizados = []
 
-    for i, (home, away, liga_nombre, _) in enumerate(partidos[:4]):   # máx 4 partidos
+    for i, (home, away, liga_nombre, _) in enumerate(candidatos[:4]):   # máx 4 partidos
         if progress_cb:
-            progress_cb(f"🔍 Analizando partido {i+1}/{min(len(partidos), 4)}: {home} vs {away}...")
+            progress_cb(f"🔍 Analizando partido {i+1}/{min(len(candidatos), 4)}: {home} vs {away}...")
+        partidos_analizados.append(f"{home} vs {away} ({liga_nombre})")
         picks = _calcular_picks_partido(sesion, home, away, liga_nombre)
         todos_picks.extend(picks)
 
+    debug_info = {
+        "n_liga":      n_liga,
+        "n_analizados": len(partidos_analizados),
+        "partidos":    partidos_analizados,
+    }
+
     if not todos_picks:
-        return []
+        return [], debug_info
 
     # Ordenar por confianza (mejor primero)
     todos_picks.sort(key=lambda x: _ORDEN_CONFIANZA.get(x["confianza"], 99))
@@ -1237,7 +1352,44 @@ def hacer_combinada_auto(n_picks: int = 2, progress_cb=None) -> list[dict]:
             if len(picks_finales) >= n_picks:
                 break
 
-    return picks_finales[:max(n_picks, 2)]
+    return picks_finales[:max(n_picks, 2)], debug_info
+
+
+def _guardar_picks_combinada(picks: list[dict]) -> None:
+    """
+    Guarda cada pick de una combinada como predicción independiente en memoria.json.
+    Sin evento_id (no hay auto-verificación), pero el LLM lo usa para calibrar.
+    """
+    from fixture_loader import LIGAS as _LIGAS_FL
+    for pick in picks:
+        stat     = pick["stat"]
+        eq1      = pick["equipo1"]
+        eq2      = pick["equipo2"]
+        liga_nom = pick["liga"]
+
+        # Texto con formato compatible con _extraer_prediccion_numerica()
+        stat_nombre = _STAT_NOMBRE_ES.get(stat, stat)
+        pred_texto = (
+            f"[Combinada] Recomendación: {pick['linea_segura']} {stat_nombre}. "
+            f"Total esperado: {pick['total']:.2f} | Confianza: {pick['confianza']} "
+            f"(línea directa: {pick['linea_directa']})"
+        )
+
+        # Liga ID y temporada (si están disponibles)
+        liga_info    = next((v for k, v in _LIGAS_FL.items()
+                             if liga_nom in k or k in liga_nom), None)
+        liga_id_save = liga_info["id"]       if liga_info else None
+        temp_id_save = liga_info["temporada"] if liga_info else None
+
+        guardar_prediccion(
+            equipo1=eq1,
+            equipo2=eq2,
+            foco=stat,
+            prediccion=pred_texto,
+            evento_id=None,          # sin evento_id → no se auto-verifica
+            liga_id=liga_id_save,
+            temporada_id=temp_id_save,
+        )
 
 
 def hacer_combinada_especifica(partidos_picks: list[tuple]) -> list[dict]:
@@ -1258,38 +1410,76 @@ def hacer_combinada_especifica(partidos_picks: list[tuple]) -> list[dict]:
     return todos_picks
 
 
-def _formatear_combinada(picks: list[dict]) -> str:
+def _formatear_combinada(picks: list[dict], liga_filtro: str = "",
+                         debug_info: dict | None = None) -> str:
     """
     Genera el texto final de la combinada para mostrar al usuario.
     """
     if not picks:
-        return (
-            "No encontré picks con suficiente confianza para armar una combinada. "
-            "Probá pedir una combinada específica indicando el partido y las stats."
-        )
+        liga_msg  = f" de {liga_filtro}" if liga_filtro else ""
+        info      = debug_info or {}
+        n_liga    = info.get("n_liga", -1)
+        n_anal    = info.get("n_analizados", 0)
+        partidos  = info.get("partidos", [])
 
-    # Confianza combinada = la peor de las selecciones (eslabón más débil)
-    peor_idx = max(_ORDEN_CONFIANZA.get(p["confianza"], 99) for p in picks)
-    confianza_combinada = next(
-        (k for k, v in _ORDEN_CONFIANZA.items() if v == peor_idx),
-        "Desconocida"
-    )
+        if n_liga == 0:
+            # No había ningún partido de esa liga en los fixtures
+            return (
+                f"No hay partidos{liga_msg} cargados en los fixtures. "
+                "Puede que la liga no tenga partidos próximos o que no se hayan podido cargar al arrancar la app."
+            )
+        elif n_anal > 0:
+            # Había partidos pero no generaron picks confiables
+            lista = "\n".join(f"  • {p}" for p in partidos)
+            return (
+                f"Analicé {n_anal} partido(s){liga_msg} pero ninguno generó picks con suficiente confianza:\n"
+                f"{lista}\n"
+                "Probá pedir una combinada específica indicando el partido y las stats."
+            )
+        else:
+            return (
+                f"No encontré picks{liga_msg} con suficiente confianza para armar una combinada. "
+                "Puede que no haya fixtures cargados para hoy, o que los datos no sean suficientes."
+            )
+
+    # Confianza combinada = probabilidad individual multiplicada por cada pick
+    # (más picks = riesgo exponencialmente mayor)
+    _PROB_CONFIANZA = {
+        "Muy alta 🟢": 0.88,
+        "Alta 🟢":     0.73,
+        "Media 🟡":    0.58,
+        "Baja 🔴":     0.42,
+    }
+    prob_combinada = 1.0
+    for p in picks:
+        prob_combinada *= _PROB_CONFIANZA.get(p["confianza"], 0.50)
+
+    if prob_combinada >= 0.72:
+        confianza_combinada = "Muy alta 🟢"
+    elif prob_combinada >= 0.55:
+        confianza_combinada = "Alta 🟢"
+    elif prob_combinada >= 0.38:
+        confianza_combinada = "Media 🟡"
+    else:
+        confianza_combinada = "Baja 🔴"
 
     lineas = [f"🎯 APUESTA COMBINADA ({len(picks)} selecciones)\n"]
 
     for i, pick in enumerate(picks, 1):
         stat_nombre = _STAT_NOMBRE_ES.get(pick["stat"], pick["stat"])
         lineas.append(
-            f"Selección {i}: {pick['linea_segura']} {stat_nombre}\n"
+            f"\nSelección {i}: {pick['linea_segura']} {stat_nombre}\n"
             f"  {pick['equipo1']} vs {pick['equipo2']} — {pick['liga']}\n"
             f"  Total esperado: {pick['total']:.2f} | Confianza: {pick['confianza']}\n"
             f"  (línea directa: {pick['linea_directa']})"
         )
 
-    lineas.append(f"\n📊 Confianza combinada: {confianza_combinada} "
-                  f"(la más baja de las {len(picks)} selecciones)")
+    lineas.append(
+        f"\n📊 Confianza combinada: {confianza_combinada} "
+        f"(prob. estimada: {prob_combinada*100:.0f}% — {len(picks)} selecciones multiplicadas)"
+    )
     lineas.append("⚠️ Todas las selecciones deben entrar para ganar. "
-                  "A mayor número de picks, mayor riesgo acumulado.")
+                  "A mayor número de picks, menor probabilidad combinada.")
     lineas.append("⚠️ Solo una recomendación estadística. Los resultados pueden variar.")
 
     return "\n".join(lineas)
@@ -1440,6 +1630,9 @@ class App(ctk.CTk):
         self.chat = ctk.CTkTextbox(self, height=450, font=ctk.CTkFont(size=13), wrap="word")
         self.chat.pack(pady=5, padx=20, fill="both", expand=True)
         self.chat.configure(state="disabled")
+        # Tags visuales: nombre del hablante con color diferente
+        self.chat.tag_config("bot_label",  foreground="#4FC3F7")
+        self.chat.tag_config("user_label", foreground="#AAAAAA")
 
         self.label_status = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=11), text_color="gray")
         self.label_status.pack()
@@ -1459,7 +1652,9 @@ class App(ctk.CTk):
 
     def agregar_mensaje(self, quien, texto):
         self.chat.configure(state="normal")
-        self.chat.insert("end", f"\n{quien}:\n{texto}\n")
+        tag = "bot_label" if quien == "🤖" else "user_label"
+        self.chat.insert("end", f"\n{quien}", tag)
+        self.chat.insert("end", f"\n{texto}\n\n")
         self.chat.see("end")
         self.chat.configure(state="disabled")
 
@@ -1558,14 +1753,23 @@ class App(ctk.CTk):
                 self.set_status("")
                 return
 
-            # ── Caso A': ACTION:COMBINADA_AUTO ───────────────────────────────
+            # ── Caso A': ACTION:COMBINADA_AUTO[|liga_filtro] ─────────────────
             if "ACTION:COMBINADA_AUTO" in respuesta:
-                self.set_status("🔍 Buscando la mejor combinada en los fixtures...")
-                picks = hacer_combinada_auto(
+                # Parsear liga opcional: ACTION:COMBINADA_AUTO|Copa Libertadores
+                m_auto = re.search(r'ACTION:COMBINADA_AUTO(?:\|([^\n|]+))?', respuesta)
+                liga_filtro_auto = m_auto.group(1).strip() if (m_auto and m_auto.group(1)) else ""
+                status_msg = (f"🔍 Buscando combinada de {liga_filtro_auto}..."
+                              if liga_filtro_auto else "🔍 Buscando la mejor combinada en los fixtures...")
+                self.set_status(status_msg)
+                picks, debug_info = hacer_combinada_auto(
                     n_picks=2,
-                    progress_cb=self.set_status
+                    progress_cb=self.set_status,
+                    liga_filtro=liga_filtro_auto,
                 )
-                texto = _formatear_combinada(picks)
+                texto = _formatear_combinada(picks, liga_filtro=liga_filtro_auto,
+                                             debug_info=debug_info)
+                if picks:
+                    _guardar_picks_combinada(picks)
                 if historial and historial[-1]["role"] == "assistant":
                     historial[-1]["content"] = texto
                 self.agregar_mensaje("🤖", texto)
@@ -1599,6 +1803,8 @@ class App(ctk.CTk):
                         )
                         picks = hacer_combinada_especifica(partidos_picks)
                         texto = _formatear_combinada(picks)
+                        if picks:
+                            _guardar_picks_combinada(picks)
                         if historial and historial[-1]["role"] == "assistant":
                             historial[-1]["content"] = texto
                         self.agregar_mensaje("🤖", texto)
@@ -1622,6 +1828,25 @@ class App(ctk.CTk):
                     liga_nombre = partes[3].strip() if len(partes) > 3 else "Besta deild karla"
 
                 if not equipo1 or not equipo2:
+                    self.set_status("")
+                    return
+
+                # Guardia: al menos uno de los equipos debe haber sido mencionado
+                # por el usuario en la conversación. Si ninguno aparece, el LLM
+                # inventó el partido — rechazamos antes de llamar a SofaScore.
+                historial_usuario = " ".join(
+                    m["content"].lower() for m in historial if m["role"] == "user"
+                )
+                eq1_word = equipo1.lower().split()[0]
+                eq2_word = equipo2.lower().split()[0]
+                if eq1_word not in historial_usuario and eq2_word not in historial_usuario:
+                    texto_err = (
+                        "No pude identificar de qué partido me hablás. "
+                        "¿Podés decirme los dos equipos que querés analizar?"
+                    )
+                    if historial and historial[-1]["role"] == "assistant":
+                        historial[-1]["content"] = texto_err
+                    self.agregar_mensaje("🤖", texto_err)
                     self.set_status("")
                     return
 
@@ -1701,15 +1926,35 @@ REGLAS GENERALES:
 - Interpretá la tendencia: ¿son valores altos o bajos para esta stat? ¿El over es cómodo o ajustado?
 - CONTEXTO COMPETITIVO: {nota_comp}
 - Si hay menos de 4 partidos con datos, mencioná que la muestra es pequeña.
-- Máximo 250 palabras. Texto corrido, sin listas.
+- Máximo 220 palabras.
+- FORMATO: usá párrafos cortos (2-3 oraciones), con una línea en blanco entre ellos. No escribas bloques largos de texto sin respiro.
+- NO uses asteriscos ni markdown. No uses listas con guiones.
 - NO uses conocimiento propio para estadísticas.
-- Terminá con: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
+- Terminá con una línea en blanco y luego: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
                 datos_sofascore=datos
             )
                 
 
                 analisis_limpio = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', analisis).strip()
-                self.agregar_mensaje("🤖", analisis_limpio)
+
+                # Cabecera de confirmación: muestra partido + liga antes del análisis
+                foco_label = {
+                    "corners": "Corners", "corners_1h": "Corners 1T", "corners_2h": "Corners 2T",
+                    "goles": "Goles", "tarjetas_amarillas": "Tarjetas amarillas",
+                    "tarjetas_amarillas_1h": "Tarjetas AM 1T", "tarjetas_amarillas_2h": "Tarjetas AM 2T",
+                    "tarjetas_rojas": "Tarjetas rojas", "remates": "Remates al arco",
+                    "faltas": "Faltas", "faltas_1h": "Faltas 1T", "faltas_2h": "Faltas 2T",
+                    "completo": "Análisis completo",
+                }.get(foco, foco)
+                encabezado = f"⚽ {equipo1} vs {equipo2}"
+                if liga_nombre:
+                    encabezado += f"  •  {liga_nombre}"
+                if info_ronda:
+                    encabezado += f"  •  {info_ronda}"
+                encabezado += f"\n📌 Foco: {foco_label}\n"
+                encabezado += "─" * 40 + "\n\n"
+
+                self.agregar_mensaje("🤖", encabezado + analisis_limpio)
                 guardar_prediccion(equipo1, equipo2, foco, analisis_limpio,
                                    evento_id=evento_id, liga_id=LIGA_ID, temporada_id=TEMPORADA_ID)
                 self.set_status("✅ Listo")

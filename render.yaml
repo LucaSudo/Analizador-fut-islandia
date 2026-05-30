@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: analizador-futbol
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: bash start.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false

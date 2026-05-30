@@ -477,8 +477,107 @@
       "evento_id": 15832787,
       "liga_id": 384,
       "temporada_id": 87760,
-      "resultado_real": null,
-      "acerto": null
+      "resultado_real": {
+        "marcador": "Nacional 1 - 0 Coquimbo Unido",
+        "goles_home": 1,
+        "goles_away": 0,
+        "ganador": "home",
+        "equipo_home": "Nacional",
+        "equipo_away": "Coquimbo Unido",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "33%",
+              "away": "67%"
+            },
+            "Total shots": {
+              "home": "8",
+              "away": "8"
+            },
+            "Corner kicks": {
+              "home": "2",
+              "away": "8"
+            },
+            "Fouls": {
+              "home": "11",
+              "away": "16"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "4"
+            },
+            "Red cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "3",
+              "away": "3"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "44%",
+              "away": "56%"
+            },
+            "Total shots": {
+              "home": "2",
+              "away": "4"
+            },
+            "Corner kicks": {
+              "home": "0",
+              "away": "3"
+            },
+            "Fouls": {
+              "home": "6",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "1"
+            },
+            "Red cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "2",
+              "away": "2"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "22%",
+              "away": "78%"
+            },
+            "Total shots": {
+              "home": "6",
+              "away": "4"
+            },
+            "Corner kicks": {
+              "home": "2",
+              "away": "5"
+            },
+            "Fouls": {
+              "home": "5",
+              "away": "10"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "3"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "1",
+              "away": "1"
+            }
+          }
+        }
+      },
+      "acerto": true
     },
     {
       "fecha": "2026-05-26 21:06",
@@ -489,8 +588,107 @@
       "evento_id": 15832787,
       "liga_id": 384,
       "temporada_id": 87760,
-      "resultado_real": null,
-      "acerto": null
+      "resultado_real": {
+        "marcador": "Nacional 1 - 0 Coquimbo Unido",
+        "goles_home": 1,
+        "goles_away": 0,
+        "ganador": "home",
+        "equipo_home": "Nacional",
+        "equipo_away": "Coquimbo Unido",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "33%",
+              "away": "67%"
+            },
+            "Total shots": {
+              "home": "8",
+              "away": "8"
+            },
+            "Corner kicks": {
+              "home": "2",
+              "away": "8"
+            },
+            "Fouls": {
+              "home": "11",
+              "away": "16"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "4"
+            },
+            "Red cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "3",
+              "away": "3"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "44%",
+              "away": "56%"
+            },
+            "Total shots": {
+              "home": "2",
+              "away": "4"
+            },
+            "Corner kicks": {
+              "home": "0",
+              "away": "3"
+            },
+            "Fouls": {
+              "home": "6",
+              "away": "6"
+            },
+            "Yellow cards": {
+              "home": "1",
+              "away": "1"
+            },
+            "Red cards": {
+              "home": "1",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "2",
+              "away": "2"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "22%",
+              "away": "78%"
+            },
+            "Total shots": {
+              "home": "6",
+              "away": "4"
+            },
+            "Corner kicks": {
+              "home": "2",
+              "away": "5"
+            },
+            "Fouls": {
+              "home": "5",
+              "away": "10"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "3"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "1",
+              "away": "1"
+            }
+          }
+        }
+      },
+      "acerto": false
     },
     {
       "fecha": "2026-05-26 21:09",
@@ -499,6 +697,216 @@
       "foco": "corners",
       "prediccion": "Universitario de Deportes genera 5.40 corners y concede 5.60, Deportes Tolima genera 5.40 corners y concede 4.20. Total combinado 10.30, línea Over 9.5. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
       "evento_id": 15832788,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": {
+        "marcador": "Universitario de Deportes 0 - 0 Deportes Tolima",
+        "goles_home": 0,
+        "goles_away": 0,
+        "ganador": "draw",
+        "equipo_home": "Universitario de Deportes",
+        "equipo_away": "Deportes Tolima",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "49%",
+              "away": "51%"
+            },
+            "Total shots": {
+              "home": "11",
+              "away": "7"
+            },
+            "Corner kicks": {
+              "home": "9",
+              "away": "3"
+            },
+            "Fouls": {
+              "home": "13",
+              "away": "19"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "2"
+            },
+            "Shots on target": {
+              "home": "2",
+              "away": "3"
+            }
+          },
+          "1ST": {
+            "Ball possession": {
+              "home": "43%",
+              "away": "57%"
+            },
+            "Total shots": {
+              "home": "5",
+              "away": "3"
+            },
+            "Corner kicks": {
+              "home": "6",
+              "away": "1"
+            },
+            "Fouls": {
+              "home": "9",
+              "away": "8"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "1",
+              "away": "1"
+            }
+          },
+          "2ND": {
+            "Ball possession": {
+              "home": "54%",
+              "away": "46%"
+            },
+            "Total shots": {
+              "home": "6",
+              "away": "4"
+            },
+            "Corner kicks": {
+              "home": "3",
+              "away": "2"
+            },
+            "Fouls": {
+              "home": "4",
+              "away": "11"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "2"
+            },
+            "Shots on target": {
+              "home": "1",
+              "away": "2"
+            }
+          }
+        }
+      },
+      "acerto": true
+    },
+    {
+      "fecha": "2026-05-27 01:32",
+      "equipo1": "IF Vestri",
+      "equipo2": "UMF Njarðvík",
+      "foco": "corners_1h",
+      "prediccion": "IF Vestri promedia 1 corner en el primer tiempo y concede 0 corners, mientras que UMF Njarðvík promedia 0.20 corners en el primer tiempo y concede 0 corners. El total combinado es 0.80 corners. La línea de apuesta es Over 0.5. Los datos sugieren una tendencia muy baja en corners en el primer tiempo, lo que indica que el partido podría tener muy pocos corners. La muestra es pequeña, con solo 5 partidos para IF Vestri y 5 partidos para UMF Njarðvík, lo que reduce la confianza en la predicción. ⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15442443,
+      "liga_id": 675,
+      "temporada_id": 89207,
+      "resultado_real": {
+        "marcador": "IF Vestri 0 - 3 UMF Njarðvík",
+        "goles_home": 0,
+        "goles_away": 3,
+        "ganador": "away",
+        "equipo_home": "IF Vestri",
+        "equipo_away": "UMF Njarðvík",
+        "stats": {
+          "ALL": {
+            "Ball possession": {
+              "home": "61%",
+              "away": "39%"
+            },
+            "Total shots": {
+              "home": "5",
+              "away": "11"
+            },
+            "Corner kicks": {
+              "home": "6",
+              "away": "4"
+            },
+            "Fouls": {
+              "home": "9",
+              "away": "4"
+            },
+            "Yellow cards": {
+              "home": "0",
+              "away": "1"
+            },
+            "Red cards": {
+              "home": "0",
+              "away": "0"
+            },
+            "Shots on target": {
+              "home": "2",
+              "away": "6"
+            }
+          }
+        }
+      },
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:28",
+      "equipo1": "Palmeiras",
+      "equipo2": "Junior Barranquilla",
+      "foco": "remates",
+      "prediccion": "[Combinada] Recomendación: Over 6.5 Remates al arco. Total esperado: 8.10 | Confianza: Alta 🟢 (línea directa: Over 7.5)",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:28",
+      "equipo1": "Cerro Porteño",
+      "equipo2": "Club Sporting Cristal",
+      "foco": "faltas",
+      "prediccion": "[Combinada] Recomendación: Over 20.5 Faltas totales. Total esperado: 22.40 | Confianza: Alta 🟢 (línea directa: Over 21.5)",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:30",
+      "equipo1": "Palmeiras",
+      "equipo2": "Junior Barranquilla",
+      "foco": "remates",
+      "prediccion": "[Combinada] Recomendación: Over 6.5 Remates al arco. Total esperado: 8.10 | Confianza: Alta 🟢 (línea directa: Over 7.5)",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:30",
+      "equipo1": "Cerro Porteño",
+      "equipo2": "Club Sporting Cristal",
+      "foco": "faltas",
+      "prediccion": "[Combinada] Recomendación: Over 20.5 Faltas totales. Total esperado: 22.40 | Confianza: Alta 🟢 (línea directa: Over 21.5)",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:30",
+      "equipo1": "Boca Juniors",
+      "equipo2": "Universidad Católica",
+      "foco": "corners",
+      "prediccion": "[Combinada] Recomendación: Over 6.5 Corners totales. Total esperado: 8.10 | Confianza: Alta 🟢 (línea directa: Over 7.5)",
+      "evento_id": null,
+      "liga_id": 384,
+      "temporada_id": 87760,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-28 15:53",
+      "equipo1": "Boca Juniors",
+      "equipo2": "Universidad Católica",
+      "foco": "completo",
+      "prediccion": "Boca Juniors promedia 1.20 goles anotados y 0.80 goles recibidos, mientras que Universidad Católica promedia 1.40 goles anotados y 0.80 goles recibidos. El total combinado de goles esperado es 2.10, con una recomendación de Over 0.5 (confianza: Alta).\n\nEl total combinado de corners esperado es 8.10, con una recomendación de Over 6.5 (confianza: Alta). La línea más arriesgada sería Over 7.5, pero la apuesta más segura es Over 6.5. \n\nEl total de tarjetas amarillas esperadas es 5.70, con una recomendación de Over 4.5 (confianza: Media). El total de faltas esperadas es 23.50, con una recomendación de Over 22.5 (confianza: Media). Considerando que este partido es de una copa eliminatoria, la presión puede aumentar, lo que podría elevar la cantidad de faltas y tarjetas.\n\n \n⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15832845,
       "liga_id": 384,
       "temporada_id": 87760,
       "resultado_real": null,
