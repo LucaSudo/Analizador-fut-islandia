@@ -664,6 +664,7 @@ def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
     inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
     resultados = []
     vistos     = set()
+    deadline   = time.time() + 20  # máximo 20 segundos en total
 
     def _agregar(evento, nombre_torneo=None):
         eid = evento.get("id")
@@ -684,6 +685,8 @@ def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
         resultados.append(f"{home} vs {away} — {torneo} — {hora_str}{hoy_tag}{curso_tag}")
 
     for delta in range(dias):
+        if time.time() > deadline:
+            break
         fecha_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
         try:
             data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}")
@@ -692,9 +695,13 @@ def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
 
     if not resultados:
         for nombre_liga, datos_liga in LIGAS.items():
+            if time.time() > deadline:
+                break
             base = (f"https://www.sofascore.com/api/v1/unique-tournament"
                     f"/{datos_liga['id']}/season/{datos_liga['temporada']}/events")
             for endpoint in ["last/0", "next/0"]:
+                if time.time() > deadline:
+                    break
                 try:
                     resp = fetch_api(sesion, f"{base}/{endpoint}")
                     for e in resp.get("events", []): _agregar(e, nombre_torneo=nombre_liga)
@@ -1212,8 +1219,21 @@ def _es_prediccion(msg: str) -> bool:
     m = msg.lower()
     return any(kw in m for kw in _PRED_KEYWORDS) or bool(_PRED_STAT_RE.search(msg))
 
+_TODOS_PARTIDOS_RE = re.compile(
+    r'(qu[eé]\s+)?partidos?\s+(?:se\s+)?(?:hay|juegan?|habrá)\s*(?:hoy|ma[ñn]ana|esta\s+semana)?|'
+    r'partidos?\s+de\s+hoy|'
+    r'qu[eé]\s+partidos?\s+hay|'
+    r'dame\s+(?:los\s+|unos?\s+)?partidos?(?:\s+de\s+hoy)?|'
+    r'hay\s+(?:alg[uú]n\s+)?partido',
+    re.IGNORECASE
+)
+
 def _es_consulta_schedule(msg: str) -> bool:
     return bool(_SCHEDULE_RE.search(msg))
+
+def _es_consulta_todos_partidos(msg: str) -> bool:
+    """True si el usuario pide ver todos los partidos sin especificar un equipo concreto."""
+    return bool(_TODOS_PARTIDOS_RE.search(msg))
 
 def _extraer_equipo_schedule(msg: str) -> str | None:
     palabras = re.sub(r'[?!.,]', '', msg.strip()).split()

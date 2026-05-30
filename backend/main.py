@@ -129,7 +129,8 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             # — no un nombre de equipo. Dejar que lo maneje el LLM con fixtures.
             if equipo and len(equipo.split()) > 2:
                 equipo = None
-            if not equipo:
+            # No buscar en historial si el usuario pidió todos los partidos en general
+            if not equipo and not engine._es_consulta_todos_partidos(message):
                 equipo = engine._extraer_equipo_de_historial(history)
 
             if equipo:
@@ -194,6 +195,22 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     texto = f"No encontré próximos partidos de {equipo} en SofaScore."
                 session_store.replace_last_assistant(session_id, texto)
                 emit("response", {"type": "fixture", "content": texto})
+            emit("done", {})
+            return
+
+        # ── Guard: consulta de schedule nunca dispara combinada ──────
+        # Si el usuario preguntó por fixtures/horarios y el LLM (por contexto
+        # de sesión) generó una acción de combinada, la descartamos y
+        # respondemos con los fixtures directamente.
+        if es_schedule and ("ACTION:COMBINADA_AUTO" in respuesta or "ACTION:COMBINADA|" in respuesta):
+            fixtures_txt = engine._obtener_fixtures_texto()
+            if fixtures_txt:
+                lineas = [l for l in fixtures_txt.splitlines() if l.strip()][:30]
+                msg = "Estos son los próximos partidos disponibles:\n\n" + "\n".join(lineas)
+            else:
+                msg = "No hay fixtures cargados en este momento."
+            session_store.replace_last_assistant(session_id, msg)
+            emit("response", {"type": "chat", "content": msg})
             emit("done", {})
             return
 
