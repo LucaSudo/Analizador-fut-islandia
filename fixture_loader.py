@@ -2,6 +2,19 @@ import os
 from curl_cffi import requests as cf_requests
 from datetime import datetime, date, timedelta
 
+# Offset horario de referencia (en horas desde UTC).
+# Default: -3 (Argentina). Ajustable via env var APP_TZ_OFFSET.
+_TZ_OFFSET = int(os.getenv("APP_TZ_OFFSET", "-3"))
+
+def _hoy_local() -> date:
+    """Fecha 'hoy' en la zona horaria configurada (no UTC del servidor)."""
+    return (datetime.utcnow() + timedelta(hours=_TZ_OFFSET)).date()
+
+def _inicio_hoy_utc() -> float:
+    """Timestamp UTC del inicio del día local (medianoche local expresada en UTC)."""
+    hoy = _hoy_local()
+    return datetime(hoy.year, hoy.month, hoy.day).timestamp() - _TZ_OFFSET * 3600
+
 LIGAS_CONFIG = {
     "Besta deild karla": 188,
     "1. deild karla": 675,
@@ -57,7 +70,8 @@ def obtener_temporadas_actuales(sesion):
 def cargar_proximos_partidos():
     contexto = "=== PRÓXIMOS PARTIDOS POR LIGA ===\n"
     ahora = datetime.now().timestamp()
-    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+    inicio_hoy = _inicio_hoy_utc()
+    hoy_local   = _hoy_local()
 
     sesion = _nueva_sesion()
 
@@ -68,7 +82,7 @@ def cargar_proximos_partidos():
     id_a_nombre = {v: k for k, v in LIGAS_CONFIG.items()}
     partidos_por_fecha: dict[str, list] = {}
     for delta in range(5):
-        fecha_str_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
+        fecha_str_api = (hoy_local + timedelta(days=delta)).strftime("%Y-%m-%d")
         try:
             resp_fecha = fetch_api(
                 sesion,
@@ -116,7 +130,7 @@ def cargar_proximos_partidos():
 
             if eventos:
                 contexto += f"\n{nombre_liga}:\n"
-                hoy_str = date.today().strftime("%d/%m/%Y")
+                hoy_str = hoy_local.strftime("%d/%m/%Y")
                 for e in eventos:
                     home = e["homeTeam"]["name"]
                     away = e["awayTeam"]["name"]

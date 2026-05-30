@@ -661,7 +661,10 @@ def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
 def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
     sesion     = _nueva_sesion()
     ahora      = datetime.now().timestamp()
-    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+    # "Hoy" en UTC-3 (Argentina) para no perder partidos nocturnos
+    _tz_offset  = int(os.getenv("APP_TZ_OFFSET", "-3"))
+    _hoy_local  = (datetime.utcnow() + timedelta(hours=_tz_offset)).date()
+    inicio_hoy  = datetime(_hoy_local.year, _hoy_local.month, _hoy_local.day).timestamp() - _tz_offset * 3600
     resultados = []
     vistos     = set()
     deadline   = time.time() + 20  # máximo 20 segundos en total
@@ -687,7 +690,7 @@ def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
     for delta in range(dias):
         if time.time() > deadline:
             break
-        fecha_api = (date.today() + timedelta(days=delta)).strftime("%Y-%m-%d")
+        fecha_api = (_hoy_local + timedelta(days=delta)).strftime("%Y-%m-%d")
         try:
             data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}")
             for e in data.get("events", []): _agregar(e)
