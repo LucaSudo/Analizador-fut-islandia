@@ -426,8 +426,10 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         # descartar ACTION:ANALIZAR del LLM (#0e). Cubre el caso típico
         # "en el análisis hablaste de equipo local pero no aclaraste cuál"
         # — el LLM responde con ACTION:ANALIZAR por inercia de contexto.
+        # Excepción: si es confirmación de partido/foco, NO interferir.
         if ("ACTION:ANALIZAR|" in respuesta
                 and _hay_analisis_previo(history)
+                and not es_confirmacion
                 and not _es_pedido_nuevo_analisis(message)):
             limpia = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', respuesta).strip()
             limpia = _limpiar_formato(limpia)

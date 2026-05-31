@@ -1345,12 +1345,57 @@ def _extraer_equipo_schedule(msg: str) -> str | None:
     return ' '.join(resto).strip() or None
 
 def _es_respuesta_a_aclaracion(history: list) -> bool:
+    """True si el último mensaje del assistant fue una PREGUNTA pendiente
+    (de partido, de foco, o de confirmación de análisis) que el user
+    está respondiendo ahora. Cubre dos casos:
+      A) ¿De qué partido hablás?  → user dice nombre del partido
+      B) ¿Análisis completo o foco X? → user dice foco
+    En ambos hay que forzar ACTION:ANALIZAR en el próximo turno."""
     for msg in reversed(history):
-        if msg["role"] == "assistant":
-            c = msg["content"].lower()
-            return ("¿de qué partido" in c or "de qué partido hablás" in c
-                    or "¿hablás del partido" in c or "hablás del partido" in c)
+        if msg["role"] != "assistant":
+            continue
+        c = msg["content"].lower()
+        # A) aclaración de partido
+        if ("¿de qué partido" in c or "de qué partido hablás" in c
+                or "¿hablás del partido" in c or "hablás del partido" in c):
+            return True
+        # B) aclaración de foco — el bot ofreció una lista de mercados
+        # y queda esperando la elección del usuario.
+        if (("foco" in c and "?" in c)
+                or "querés que analice los goles" in c
+                or "querés que le sume" in c
+                or ("análisis completo" in c and "foco" in c)
+                or ("goles" in c and "corners" in c and "tarjetas" in c and "?" in c)):
+            return True
+        return False
     return False
+
+
+# Bug #0h: focos válidos como respuesta directa a la pregunta de foco.
+# Si el último assistant pidió foco y el user contesta uno de estos,
+# es confirmación → fuerza ACTION:ANALIZAR.
+_FOCOS_VALIDOS_RE = re.compile(
+    r'\b(?:foco\s+)?(completo|goles?|corners?|'
+    r'tarjetas?(?:\s+(?:amarillas?|rojas?))?|amarillas?|rojas?|'
+    r'remates?(?:\s+al\s+arco)?|faltas?|'
+    r'corners?\s+(?:antes\s+del?\s+(?:min(?:uto)?\s*)?\d+|primer?\s+tiempo|'
+    r'segundo\s+tiempo|1t|2t|1er\s+tiempo|2do\s+tiempo)|'
+    r'1\s*t|2\s*t|primer\s+tiempo|segundo\s+tiempo|1er\s+tiempo|2do\s+tiempo'
+    r')\b',
+    re.IGNORECASE,
+)
+
+
+def _es_respuesta_de_foco(msg: str) -> bool:
+    """True si el msg es PROBABLEMENTE una elección de foco (muy corto
+    + contiene una keyword de foco). No usar sin chequear que el bot
+    haya pedido foco — para eso ya está _es_respuesta_a_aclaracion."""
+    if not msg:
+        return False
+    palabras = msg.strip().split()
+    if len(palabras) > 5:
+        return False
+    return bool(_FOCOS_VALIDOS_RE.search(msg))
 
 def _extraer_equipo_de_historial(history: list) -> str | None:
     msgs = history[-10:]
@@ -1499,12 +1544,17 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
         mensajes += history[:-1]
         if es_confirmacion_partido:
             inyeccion = (
-                "⚠️ El usuario confirmó el partido. "
-                "En la conversación ya tenés: el foco original y el partido especificado. "
-                "Respondé con UNA frase muy corta ('Perfecto, voy a analizar...') y terminá con:\n"
-                "ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n"
-                "Asegurate de usar los nombres EXACTOS de los equipos tal como aparecen en los fixtures. "
-                "NUNCA inventés datos ni promedios."
+                "⚠️ EL USUARIO YA CONFIRMÓ. Mirá el HISTORIAL para extraer:\n"
+                "  - PARTIDO: el último que vos propusiste o listaste (equipo local + visitante + liga)\n"
+                "  - FOCO: el último mensaje del usuario (si dice 'completo'/'foco completo' → completo;\n"
+                "    si dice 'goles' → goles; 'corners' → corners; 'tarjetas' o 'amarillas' → tarjetas_amarillas;\n"
+                "    'rojas' → tarjetas_rojas; 'remates' → remates; 'faltas' → faltas;\n"
+                "    1T/2T → sufijo _1h o _2h; 'antes del minuto N' → corners_antes_N)\n\n"
+                "OBLIGATORIO — Respondé con UNA frase muy corta (ej: 'Perfecto, voy a analizar...') "
+                "y AL FINAL emití SIEMPRE esta línea exacta:\n"
+                "  ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n\n"
+                "NUNCA omitas la línea ACTION:ANALIZAR. NUNCA inventés datos ni promedios. "
+                "Usá los nombres EXACTOS de los equipos tal como aparecen en los fixtures."
             )
         else:
             fixtures_ctx = _obtener_fixtures_texto()
