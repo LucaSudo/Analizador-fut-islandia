@@ -755,19 +755,23 @@ def _parsear_partidos_fixtures() -> list[tuple]:
     next_sec = SYSTEM_PROMPT.find("\n===", start + 5)
     fixtures_txt = SYSTEM_PROMPT[start:next_sec] if next_sec != -1 else SYSTEM_PROMPT[start:]
 
-    resultados = []; liga_actual = ""
+    resultados = []; liga_actual = ""; ligas_parseadas = {}
     for linea in fixtures_txt.splitlines():
         ls = linea.strip()
         if ls.endswith(":") and not ls.startswith("-") and "===" not in ls:
             candidato = ls[:-1].strip()
-            if candidato: liga_actual = candidato
+            if candidato:
+                liga_actual = candidato
+                ligas_parseadas[liga_actual] = 0
             continue
         m = re.search(r'-\s+(.+?)\s+vs\s+(.+?)\s+\(', linea)
         if m and liga_actual:
             home = m.group(1).strip(); away = m.group(2).strip()
             es_prio = "[HOY]" in linea or "[EN CURSO]" in linea
             resultados.append((home, away, liga_actual, es_prio))
+            ligas_parseadas[liga_actual] += 1
 
+    print(f"📊 Parsed fixtures por liga: {ligas_parseadas}", flush=True)
     resultados.sort(key=lambda x: 0 if x[3] else 1)
     return resultados
 
