@@ -15,7 +15,31 @@ import sys
 import os
 import re
 import time
+import threading
 from datetime import datetime, date, timedelta
+
+# ── Per-request timezone (thread-local) ─────────────────────────────
+# El backend recibe el offset horario del usuario en cada request y lo
+# guarda acá. Las funciones que calculan "hoy" lo leen para no depender
+# de la TZ del servidor (que en deploy suele ser UTC).
+_tls = threading.local()
+
+def set_request_tz_offset(hours: float | None) -> None:
+    _tls.tz_offset_hours = hours
+
+def get_tz_offset_hours() -> float:
+    """Offset horas desde UTC. Prioridad: TLS del request → env → -3."""
+    v = getattr(_tls, "tz_offset_hours", None)
+    if v is not None:
+        return v
+    try:
+        return float(os.getenv("APP_TZ_OFFSET", "-3"))
+    except ValueError:
+        return -3.0
+
+# TZ del servidor cuando se cargaron los fixtures iniciales (para revertir
+# las horas pre-formateadas a UTC antes de re-formatear al TZ del usuario).
+_SERVER_TZ_AT_LOAD: float = float(os.getenv("APP_TZ_OFFSET", "-3"))
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -661,8 +685,8 @@ def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
 def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
     sesion     = _nueva_sesion()
     ahora      = datetime.now().timestamp()
-    # "Hoy" en UTC-3 (Argentina) para no perder partidos nocturnos
-    _tz_offset  = int(os.getenv("APP_TZ_OFFSET", "-3"))
+    # "Hoy" en la TZ del usuario (viene del header / body del request).
+    _tz_offset  = get_tz_offset_hours()
     _hoy_local  = (datetime.utcnow() + timedelta(hours=_tz_offset)).date()
     inicio_hoy  = datetime(_hoy_local.year, _hoy_local.month, _hoy_local.day).timestamp() - _tz_offset * 3600
     resultados = []
@@ -772,11 +796,55 @@ def _parsear_partidos_fixtures() -> list[tuple]:
     return resultados
 
 
+def _retag_fixtures_para_tz(texto: str, user_tz_hours: float) -> str:
+    """
+    Re-formatea las horas (DD/MM/YYYY HH:MM) y el tag [HOY] del bloque de
+    fixtures para que coincidan con la TZ del usuario. Los fixtures se
+    cargan al arrancar con la TZ del servidor (_SERVER_TZ_AT_LOAD); acá
+    revertimos a UTC y reconvertimos al TZ del usuario.
+    """
+    delta = user_tz_hours - _SERVER_TZ_AT_LOAD
+    user_hoy = (datetime.utcnow() + timedelta(hours=user_tz_hours)).date()
+    user_hoy_str = user_hoy.strftime("%d/%m/%Y")
+
+    def _fix_linea(linea: str) -> str:
+        sin_hoy = re.sub(r'\s*\[HOY\]', '', linea)
+        if delta != 0:
+            def _shift(m):
+                try:
+                    dt = datetime.strptime(
+                        f"{m.group(1)} {m.group(2)}", "%d/%m/%Y %H:%M"
+                    ) + timedelta(hours=delta)
+                    return f"({dt.strftime('%d/%m/%Y %H:%M')}"
+                except ValueError:
+                    return m.group(0)
+            sin_hoy = re.sub(
+                r'\((\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})',
+                _shift, sin_hoy, count=1,
+            )
+        # Re-aplicar [HOY] si la fecha del partido (ya en TZ del usuario)
+        # cae en el día de hoy del usuario.
+        m = re.search(r'\((\d{2}/\d{2}/\d{4})\s+\d{2}:\d{2}', sin_hoy)
+        if m and m.group(1) == user_hoy_str:
+            # Insertar [HOY] justo después del HH:MM, antes de [EN CURSO]/")".
+            sin_hoy = re.sub(
+                r'(\d{2}:\d{2})(\s*(?:\[EN CURSO\])?\))',
+                r'\1 [HOY]\2', sin_hoy, count=1,
+            )
+        return sin_hoy
+
+    return "\n".join(_fix_linea(l) for l in texto.splitlines())
+
+
 def _obtener_fixtures_texto() -> str:
     start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
     if start == -1: return ""
     next_sec = SYSTEM_PROMPT.find("\n===", start + 5)
-    return SYSTEM_PROMPT[start:next_sec] if next_sec != -1 else SYSTEM_PROMPT[start:]
+    bruto = SYSTEM_PROMPT[start:next_sec] if next_sec != -1 else SYSTEM_PROMPT[start:]
+    user_tz = get_tz_offset_hours()
+    if user_tz == _SERVER_TZ_AT_LOAD:
+        return bruto
+    return _retag_fixtures_para_tz(bruto, user_tz)
 
 
 def _buscar_en_fixtures_cargados(nombre_equipo: str) -> list[str]:

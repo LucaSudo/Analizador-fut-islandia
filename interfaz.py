@@ -95,41 +95,31 @@ def obtener_estadisticas(sesion, evento_id):
 
 def calcular_lineas_y_confianza(total_esperado: float) -> tuple:
     """
-    Retorna (línea_directa, línea_segura, nivel_confianza).
+    Retorna (línea_directa, línea_segura, nivel_confianza, línea_conservadora).
 
-    Línea directa : X.5 inmediatamente inferior al total (la más cercana al total).
-    Línea segura  : primera línea X.5 con margen ≥ 1.0 respecto al total.
-                    Más conservadora y menos riesgosa que la directa.
-    Confianza     : refleja cuánto margen hay entre el total y la línea segura.
+    Línea directa     : X.5 inmediatamente inferior al total (la más agresiva).
+    Línea segura      : primera línea X.5 con margen ≥ 1.0 (Media o mejor).
+    Línea conservadora: primera línea X.5 con margen ≥ 2.5 (Muy Alta).
+                        Igual a línea_segura si esta ya alcanza Muy Alta.
+    Confianza         : basada en el margen de la línea segura.
 
-    Ejemplos:
-      total=11.60 → ('Over 11.5', 'Over 10.5', 'Media 🟡')   margen=1.10
-      total=13.80 → ('Over 13.5', 'Over 12.5', 'Media 🟡')   margen=1.30
-      total=16.00 → ('Over 15.5', 'Over 14.5', 'Alta 🟢')    margen=1.50
-      total= 9.20 → ('Over 8.5',  'Over 8.5',  'Media 🟡')   margen=1.20 (wait)
-
-    trace total=9.20:
-      linea_directa = 9+0.5 = 9.5... 9.5 >= 9.20 → 8.5
-      linea_segura = 8.5; 9.20-8.5=0.70 < 1.0 → 7.5
-      9.20-7.5=1.70 ≥ 1.0 → stop; confianza='Alta 🟢'
+    Ejemplos (total=13.60):
+      directa=Over 13.5 | segura=Over 12.5 (Media, margen 1.10) | conservadora=Over 10.5 (Muy alta, margen 3.10)
     """
-    # ── Línea directa: X.5 inmediatamente inferior al total ────────
+    # ── Línea directa ──────────────────────────────────────────────
     base = int(total_esperado)
     linea_directa = base + 0.5
     if linea_directa >= total_esperado:
         linea_directa -= 1.0
 
     # ── Línea segura: primer X.5 con margen ≥ 1.0 ─────────────────
-    # Floor en 0.5 (mínima línea sensata). Si el total es tan bajo que
-    # no se puede alcanzar margen ≥ 1.0, la línea segura = directa y
-    # la confianza será Baja (indica que no hay apuesta conservadora posible).
     linea_segura = linea_directa
     while total_esperado - linea_segura < 1.0:
         if linea_segura <= 0.5:
-            break          # ya estamos en el mínimo, no seguir restando
+            break
         linea_segura -= 1.0
         if linea_segura < 0.5:
-            linea_segura = 0.5   # no bajar de Over 0.5
+            linea_segura = 0.5
 
     margen = total_esperado - linea_segura
 
@@ -141,13 +131,23 @@ def calcular_lineas_y_confianza(total_esperado: float) -> tuple:
     elif margen >= 1.0:
         confianza = "Media 🟡"
     else:
-        # margen < 1.0: total muy bajo, no existe línea conservadora posible
         confianza = "Baja 🔴"
+
+    # ── Línea conservadora: primer X.5 con margen ≥ 2.5 (Muy Alta) ─
+    # Solo diferente de línea_segura cuando ésta tiene confianza < Muy Alta.
+    linea_conservadora = linea_segura
+    while total_esperado - linea_conservadora < 2.5:
+        if linea_conservadora <= 0.5:
+            break
+        linea_conservadora -= 1.0
+        if linea_conservadora < 0.5:
+            linea_conservadora = 0.5
 
     return (
         f"Over {linea_directa:.1f}",
         f"Over {linea_segura:.1f}",
         confianza,
+        f"Over {linea_conservadora:.1f}",
     )
 
 # Stats de conteo que se pueden promediar directamente
@@ -457,29 +457,216 @@ def hacer_analisis_completo(equipo1, equipo2):
             total = (v1 + v2 + a1 + a2) / 2
         else:
             total = v1 + v2   # fallback si no hay datos de concedidos
-        linea_directa, linea_segura, confianza = calcular_lineas_y_confianza(total)
-        lineas_python[foco_key] = (total, linea_directa, linea_segura, confianza)
+        linea_directa, linea_segura, confianza, linea_conservadora = calcular_lineas_y_confianza(total)
+        lineas_python[foco_key] = (total, linea_directa, linea_segura, confianza, linea_conservadora)
 
     # Agregar al contexto las líneas ya calculadas
     lineas_ctx = []
-    for foco_key, (total, linea_directa, linea_segura, confianza) in lineas_python.items():
-        lineas_ctx.append(
+    for foco_key, (total, linea_directa, linea_segura, confianza, linea_conservadora) in lineas_python.items():
+        ctx = (
             f"  {foco_key}: total esperado = {total:.2f}"
             f" | línea directa = {linea_directa}"
-            f" | LÍNEA RECOMENDADA = {linea_segura}"
-            f" (confianza: {confianza})"
+            f" | LÍNEA RECOMENDADA = {linea_segura} (confianza: {confianza})"
         )
+        if linea_conservadora != linea_segura:
+            ctx += f" | LÍNEA CONSERVADORA = {linea_conservadora} (confianza: Muy alta 🟢)"
+        lineas_ctx.append(ctx)
 
     contexto = (
         "DATOS REALES DE SOFASCORE (promedios ya calculados por equipo):\n\n"
         f"{stats_eq1}\n\n"
         f"{stats_eq2}\n\n"
         "LÍNEAS DE APUESTA PRE-CALCULADAS POR PYTHON:\n"
-        "  (línea directa = la más cercana al total | LÍNEA RECOMENDADA = con margen seguro ≥ 1.0)\n"
+        "  (directa = más agresiva | RECOMENDADA = margen ≥ 1.0 | CONSERVADORA = margen ≥ 2.5, Muy Alta)\n"
         + ("\n".join(lineas_ctx) if lineas_ctx else "  (sin datos suficientes)")
         + "\n"
     )
-    return contexto, evento_id_proximo, info_ronda
+    return contexto, evento_id_proximo, info_ronda, lineas_python, promedios_eq1, promedios_eq2
+
+
+# ── Corners antes del minuto X ────────────────────────────────────────
+# SofaScore no expone el minuto exacto de cada corner en su API pública.
+# Usamos interpolación lineal sobre los datos de 1T y 2T que ya tenemos:
+#   min ≤ 45 → proporción del primer tiempo  = corners_1T * (min/45)
+#   min > 45 → primer tiempo completo + fracción del segundo = corners_1T + corners_2T * ((min-45)/45)
+
+def _interpolar_corners(prom: dict, minuto: int) -> tuple:
+    """
+    Estima corners generados/concedidos antes del minuto X
+    usando interpolación lineal sobre los promedios de 1T y 2T.
+    Retorna (generados, concedidos) o (None, None) si no hay datos.
+    """
+    c1g = prom.get("1ST_Corner kicks")
+    c1a = prom.get("1ST_Corner kicks_against")
+    c2g = prom.get("2ND_Corner kicks")
+    c2a = prom.get("2ND_Corner kicks_against")
+
+    if minuto <= 45:
+        frac = minuto / 45
+        gen = c1g * frac if c1g is not None else None
+        con = c1a * frac if c1a is not None else None
+    else:
+        frac2 = (minuto - 45) / 45
+        gen = (c1g + c2g * frac2) if (c1g is not None and c2g is not None) else None
+        con = (c1a + c2a * frac2) if (c1a is not None and c2a is not None) else None
+
+    return gen, con
+
+
+def hacer_analisis_corners_tiempo(equipo1: str, equipo2: str, minuto: int):
+    """
+    Análisis de corners antes del minuto X usando interpolación lineal
+    sobre los promedios de 1T/2T de SofaScore.
+    Retorna (contexto, lineas_python, prom1, prom2).
+    """
+    global RONDAS_TOTALES
+    sesion = _nueva_sesion()
+
+    try:
+        rd = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/{LIGA_ID}/season/{TEMPORADA_ID}/rounds")
+        rl = rd.get("rounds", [])
+        RONDAS_TOTALES = (
+            rd.get("currentRound", {}).get("round")
+            or (rl[-1].get("round", RONDAS_TOTALES) if rl else RONDAS_TOTALES)
+        )
+    except Exception:
+        pass
+
+    # Reutilizamos precomputar_stats_equipo — ya trae 1ST y 2ND corners
+    _, prom_raw1 = precomputar_stats_equipo(sesion, equipo1)
+    _, prom_raw2 = precomputar_stats_equipo(sesion, equipo2)
+
+    foco_key = f"corners_antes_{minuto}"
+
+    gen1, con1 = _interpolar_corners(prom_raw1, minuto)
+    gen2, con2 = _interpolar_corners(prom_raw2, minuto)
+
+    # Construir promedios
+    prom1, prom2 = {}, {}
+    if gen1 is not None: prom1[foco_key]              = gen1
+    if con1 is not None: prom1[f"{foco_key}_against"] = con1
+    if gen2 is not None: prom2[foco_key]              = gen2
+    if con2 is not None: prom2[f"{foco_key}_against"] = con2
+
+    # Calcular líneas
+    lineas_python = {}
+    v1, v2 = prom1.get(foco_key), prom2.get(foco_key)
+    if v1 is not None and v2 is not None:
+        a1, a2 = prom1.get(f"{foco_key}_against"), prom2.get(f"{foco_key}_against")
+        total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
+        d, s, c, cons = calcular_lineas_y_confianza(total)
+        lineas_python[foco_key] = (total, d, s, c, cons)
+
+    # Contexto
+    def _fmt(v):
+        return f"{v:.2f}" if v is not None else "(sin datos)"
+
+    nota = f"(estimado por interpolación lineal sobre promedios de 1T/2T)"
+    contexto = (
+        f"CORNERS ANTES DEL MINUTO {minuto} {nota}:\n\n"
+        f"  {equipo1}: genera {_fmt(gen1)}, concede {_fmt(con1)}\n"
+        f"  {equipo2}: genera {_fmt(gen2)}, concede {_fmt(con2)}\n\n"
+        "LÍNEAS PRE-CALCULADAS:\n"
+        "  (directa = más agresiva | RECOMENDADA = margen ≥ 1.0 | CONSERVADORA = margen ≥ 2.5)\n"
+    )
+    if foco_key in lineas_python:
+        total, d, s, c, cons = lineas_python[foco_key]
+        ctx_l = (
+            f"  {foco_key}: total esperado = {total:.2f}"
+            f" | línea directa = {d}"
+            f" | LÍNEA RECOMENDADA = {s} (confianza: {c})"
+        )
+        if cons != s:
+            ctx_l += f" | LÍNEA CONSERVADORA = {cons} (confianza: Muy alta 🟢)"
+        contexto += ctx_l + "\n"
+    else:
+        contexto += "  (sin datos suficientes)\n"
+
+    return contexto, lineas_python, prom1, prom2
+
+
+# ── Generador de párrafos en Python (sin depender del LLM) ───────────
+
+_STAT_GEN_LABEL = {
+    "corners":               "corners",
+    "corners_1h":            "corners en el 1er tiempo",
+    "corners_2h":            "corners en el 2do tiempo",
+    "goles":                 "goles",
+    "tarjetas_amarillas":    "tarjetas amarillas",
+    "tarjetas_amarillas_1h": "amarillas en el 1er tiempo",
+    "tarjetas_amarillas_2h": "amarillas en el 2do tiempo",
+    "remates":               "remates al arco",
+    "remates_1h":            "remates al arco en el 1er tiempo",
+    "remates_2h":            "remates al arco en el 2do tiempo",
+    "faltas":                "faltas",
+    "faltas_1h":             "faltas en el 1er tiempo",
+    "faltas_2h":             "faltas en el 2do tiempo",
+}
+
+_FOCO_A_CLAVE_STAT = {
+    "corners":               "ALL_Corner kicks",
+    "corners_1h":            "1ST_Corner kicks",
+    "corners_2h":            "2ND_Corner kicks",
+    "goles":                 "goles",
+    "tarjetas_amarillas":    "ALL_Yellow cards",
+    "tarjetas_amarillas_1h": "1ST_Yellow cards",
+    "tarjetas_amarillas_2h": "2ND_Yellow cards",
+    "remates":               "ALL_Shots on target",
+    "remates_1h":            "1ST_Shots on target",
+    "remates_2h":            "2ND_Shots on target",
+    "faltas":                "ALL_Fouls",
+    "faltas_1h":             "1ST_Fouls",
+    "faltas_2h":             "2ND_Fouls",
+}
+
+def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
+                              lineas_python: dict, prom1: dict, prom2: dict) -> str | None:
+    """
+    Genera los párrafos de datos y líneas completamente en Python.
+    Retorna el texto pre-construido, o None si no hay datos para este foco.
+    El LLM solo agrega una oración de interpretación al final.
+    Soporta focos dinámicos: corners_antes_{minuto}.
+    """
+    if foco not in lineas_python:
+        return None
+
+    total, directa, recomendada, confianza, conservadora = lineas_python[foco]
+
+    # Foco dinámico: corners_antes_X
+    if foco.startswith("corners_antes_"):
+        minuto = foco.replace("corners_antes_", "")
+        stat_label = f"corners antes del minuto {minuto}"
+        stat_clave = foco   # la clave en prom1/prom2 es el mismo foco_key
+    else:
+        stat_clave = _FOCO_A_CLAVE_STAT.get(foco)
+        stat_label = _STAT_GEN_LABEL.get(foco, foco)
+
+    # ── Párrafo 1: datos por equipo ───────────────────────────────────
+    if stat_clave:
+        v1 = prom1.get(stat_clave)
+        v2 = prom2.get(stat_clave)
+        a1 = prom1.get(f"{stat_clave}_against")
+        a2 = prom2.get(f"{stat_clave}_against")
+
+        if v1 is not None and v2 is not None:
+            p1 = f"{eq1} genera {v1:.2f} {stat_label}"
+            if a1 is not None:
+                p1 += f" y concede {a1:.2f}"
+            p1 += f", {eq2} genera {v2:.2f}"
+            if a2 is not None:
+                p1 += f" y concede {a2:.2f}"
+            p1 += f". El total esperado es {total:.2f}."
+        else:
+            p1 = f"El total esperado de {stat_label} es {total:.2f}."
+    else:
+        p1 = f"El total esperado de {stat_label} es {total:.2f}."
+
+    # ── Párrafo 2: líneas ─────────────────────────────────────────────
+    p2 = f"La línea directa es {directa}. La apuesta recomendada es {recomendada} ({confianza})."
+    if conservadora != recomendada:
+        p2 += f" Para los más conservadores: {conservadora} (Muy alta)."
+
+    return f"{p1}\n\n{p2}"
 
 
 # ── Chat con IA ──────────────────────────────────────────────────
@@ -659,6 +846,8 @@ Reglas de formato que NO se pueden violar:
        faltas              — faltas totales
        faltas_1h           — faltas en el primer tiempo
        faltas_2h           — faltas en el segundo tiempo
+       corners_antes_{minuto} — corners antes del minuto X (ej: corners_antes_30, corners_antes_60, corners_antes_75)
+                             Usá el número exacto que pida el usuario. Cualquier minuto entre 1 y 89 es válido.
   3. La liga debe ser exactamente uno de estos valores (copiado tal cual, sin variaciones):
        - Besta deild karla
        - 1. deild karla
@@ -987,107 +1176,80 @@ _MSG_SIN_DATOS = (
 #   "ALL_Corner kicks: [6, 4, 1, 4, 3] -> promedio = 3.60"
 # Y la sección LÍNEAS PRE-CALCULADAS POR PYTHON tiene el total y la línea lista.
 # Los prompts solo necesitan decirle al LLM QUÉ stat mirar y cómo presentarlo.
+
+# Template base que se reutiliza en todos los focos de stats numéricas.
+# Se instancia con el nombre de la stat y la clave en LÍNEAS PRE-CALCULADAS.
+def _tpl(stat_label: str, foco_key: str, periodo: str = "") -> str:
+    per = f" {periodo}" if periodo else ""
+    return (
+        f"Respondé con EXACTAMENTE este formato (3 párrafos separados por línea en blanco). "
+        f"COMPLETÁ los valores leyéndolos de los datos — NO los inventes ni los omitas:\n\n"
+        f"PÁRRAFO 1 — DATOS:\n"
+        f"[equipo1] genera [X]{per} {stat_label} y concede [Z], "
+        f"[equipo2] genera [Y] y concede [W]. "
+        f"El total esperado es [NÚMERO EXACTO del campo '{foco_key}' en LÍNEAS PRE-CALCULADAS].\n\n"
+        f"PÁRRAFO 2 — LÍNEAS:\n"
+        f"La línea directa es [DIRECTA de '{foco_key}']. "
+        f"La apuesta recomendada es [RECOMENDADA] ([CONFIANZA]). "
+        f"[Solo si existe LÍNEA CONSERVADORA distinta de la RECOMENDADA: "
+        f"'Para los más conservadores: [CONSERVADORA] (Muy alta).']\n\n"
+        f"PÁRRAFO 3 — INTERPRETACIÓN (una sola oración):\n"
+        f"¿El over es cómodo o ajustado con ese total? "
+        f"Si hay anomalía llamativa (ej: un equipo genera pocos pero concede muchos → juega replegado), "
+        f"explicala brevemente. Si no hay nada concreto que agregar, omitir este párrafo.\n\n"
+        f"PROHIBIDO ABSOLUTO — no escribas ninguna de estas frases ni ideas similares:\n"
+        f"  - 'el contexto competitivo puede influir'\n"
+        f"  - 'los equipos luchan por posiciones en la tabla'\n"
+        f"  - 'la intensidad del juego'\n"
+        f"  - repetir en el párrafo 3 información ya dicha en los párrafos 1 o 2\n"
+        f"  - agregar un cuarto párrafo"
+    )
+
 _FOCO_PROMPT = {
     "completo": (
-        "Hacé un resumen con las stats principales: "
-        "mencioná el promedio de goles anotados y recibidos de cada equipo, "
-        "el total combinado de corners esperado, tarjetas amarillas esperadas y faltas. "
-        "Para cada stat usá la LÍNEA RECOMENDADA de LÍNEAS PRE-CALCULADAS (no la directa) "
-        "e indicá el nivel de confianza que figura entre paréntesis."
+        "Respondé con UN párrafo por stat, en este orden: goles, corners, tarjetas amarillas. "
+        "Para cada stat el párrafo debe tener EXACTAMENTE esta estructura:\n"
+        "  '[EQ1] anota/genera X y concede Z, [EQ2] anota/genera Y y concede W. "
+        "Total esperado: [NÚMERO EXACTO de LÍNEAS PRE-CALCULADAS]. "
+        "Línea directa [DIRECTA], recomendada [RECOMENDADA] ([CONFIANZA])"
+        "[, conservadora [CONSERVADORA] (Muy alta) si existe].'\n"
+        "Separar cada stat con una línea en blanco. "
+        "PROHIBIDO: párrafos de contexto vago ('la intensidad', 'la tabla', etc.). "
+        "Solo datos y líneas."
     ),
-    "goles": (
-        "Leé 'Goles anotados' y 'Goles recibidos' de cada equipo en ESTADÍSTICAS. "
-        "Mostrá: equipo1 anota X recibe Z, equipo2 anota Y recibe W. "
-        "Indicá también si suelen anotar ambos. "
-        "Usá la LÍNEA RECOMENDADA del foco 'goles' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "corners": (
-        "Leé ALL_Corner kicks y ALL_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá: equipo1 genera X concede Z, equipo2 genera Y concede W. "
-        "Usá la LÍNEA RECOMENDADA del foco 'corners' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "corners_1h": (
-        "Leé 1ST_Corner kicks y 1ST_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de generados y concedidos por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'corners_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "corners_2h": (
-        "Leé 2ND_Corner kicks y 2ND_Corner kicks (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de generados y concedidos por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'corners_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "tarjetas_amarillas": (
-        "Leé ALL_Yellow cards y ALL_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "tarjetas_amarillas_1h": (
-        "Leé 1ST_Yellow cards y 1ST_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "tarjetas_amarillas_2h": (
-        "Leé 2ND_Yellow cards y 2ND_Yellow cards (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_amarillas_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
+    "goles":              _tpl("goles", "goles"),
+    "corners":            _tpl("corners", "corners"),
+    "corners_1h":         _tpl("corners (1er tiempo)", "corners_1h", "en 1T"),
+    "corners_2h":         _tpl("corners (2do tiempo)", "corners_2h", "en 2T"),
+    "tarjetas_amarillas": _tpl("tarjetas amarillas", "tarjetas_amarillas"),
+    "tarjetas_amarillas_1h": _tpl("amarillas (1er tiempo)", "tarjetas_amarillas_1h", "en 1T"),
+    "tarjetas_amarillas_2h": _tpl("amarillas (2do tiempo)", "tarjetas_amarillas_2h", "en 2T"),
     "tarjetas_rojas": (
-        "Leé ALL_Red cards y ALL_Red cards (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Indicá en cuántos partidos hubo roja (propia o recibida) y si es probable. "
-        "Usá la LÍNEA RECOMENDADA del foco 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS si existe; "
-        "si no, recomendá Sí/No según la frecuencia. Mencioná la confianza."
+        "Respondé con EXACTAMENTE este formato:\n\n"
+        "PÁRRAFO 1 — FRECUENCIA:\n"
+        "[equipo1] tuvo roja en [N] de sus últimos [M] partidos, "
+        "[equipo2] en [N2] de [M2]. Frecuencia: [alta/media/baja].\n\n"
+        "PÁRRAFO 2 — RECOMENDACIÓN:\n"
+        "Si hay LÍNEA RECOMENDADA en 'tarjetas_rojas' de LÍNEAS PRE-CALCULADAS, usala. "
+        "Si no, recomendá Sí/No basado en la frecuencia con una justificación breve.\n\n"
+        "PROHIBIDO: párrafos de contexto vago. Solo frecuencia y recomendación."
     ),
     "tarjetas_rojas_1h": (
-        "Leé 1ST_Red cards y 1ST_Red cards (concedidos). Frecuencia de rojas en 1er tiempo. "
-        "Recomendá Sí/No según la frecuencia observada."
+        "PÁRRAFO 1: Frecuencia de rojas en 1er tiempo para cada equipo (N de M partidos).\n"
+        "PÁRRAFO 2: Recomendación Sí/No con justificación basada en esa frecuencia.\n"
+        "PROHIBIDO: cualquier frase genérica de contexto."
     ),
     "tarjetas_rojas_2h": (
-        "Leé 2ND_Red cards y 2ND_Red cards (concedidos). Frecuencia de rojas en 2do tiempo. "
-        "Recomendá Sí/No según la frecuencia observada."
+        "PÁRRAFO 1: Frecuencia de rojas en 2do tiempo para cada equipo (N de M partidos).\n"
+        "PÁRRAFO 2: Recomendación Sí/No con justificación basada en esa frecuencia.\n"
+        "PROHIBIDO: cualquier frase genérica de contexto."
     ),
-    "remates": (
-        "Leé ALL_Shots on target y ALL_Shots on target (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de generados y recibidos por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'remates' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "remates_1h": (
-        "Leé 1ST_Shots on target y 1ST_Shots on target (concedidos). "
-        "Mostrá promedios de generados y recibidos. "
-        "Usá la LÍNEA RECOMENDADA del foco 'remates_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "remates_2h": (
-        "Leé 2ND_Shots on target y 2ND_Shots on target (concedidos). "
-        "Mostrá promedios de generados y recibidos. "
-        "Usá la LÍNEA RECOMENDADA del foco 'remates_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "faltas": (
-        "Leé ALL_Fouls y ALL_Fouls (concedidos) de cada equipo en ESTADÍSTICAS. "
-        "Mostrá los promedios de cometidas y recibidas por equipo. "
-        "Usá la LÍNEA RECOMENDADA del foco 'faltas' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "faltas_1h": (
-        "Leé 1ST_Fouls y 1ST_Fouls (concedidos). "
-        "Mostrá promedios de cometidas y recibidas. "
-        "Usá la LÍNEA RECOMENDADA del foco 'faltas_1h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
-    "faltas_2h": (
-        "Leé 2ND_Fouls y 2ND_Fouls (concedidos). "
-        "Mostrá promedios de cometidas y recibidas. "
-        "Usá la LÍNEA RECOMENDADA del foco 'faltas_2h' de LÍNEAS PRE-CALCULADAS (no la directa). "
-        "Mencioná el nivel de confianza entre paréntesis."
-    ),
+    "remates":    _tpl("remates al arco", "remates"),
+    "remates_1h": _tpl("remates al arco (1er tiempo)", "remates_1h", "en 1T"),
+    "remates_2h": _tpl("remates al arco (2do tiempo)", "remates_2h", "en 2T"),
+    "faltas":     _tpl("faltas", "faltas"),
+    "faltas_1h":  _tpl("faltas (1er tiempo)", "faltas_1h", "en 1T"),
+    "faltas_2h":  _tpl("faltas (2do tiempo)", "faltas_2h", "en 2T"),
 }
 
 # ── Apuestas combinadas ───────────────────────────────────────────
@@ -1250,7 +1412,7 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
         a2 = prom2.get(f"{stat_clave}_against")
         total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
 
-        linea_directa, linea_segura, confianza = calcular_lineas_y_confianza(total)
+        linea_directa, linea_segura, confianza, _ = calcular_lineas_y_confianza(total)
 
         # Descartar picks cuya línea segura sea trivialmente baja (sin valor real)
         # Solo aplicar en combinada auto; las combinadas específicas no se filtran.
@@ -1857,23 +2019,28 @@ class App(ctk.CTk):
                 TEMPORADA_ID   = liga["temporada"]
                 RONDAS_TOTALES = liga["rondas"]
 
+                foco_lower = foco.lower()
                 self.set_status("🔄 Bajando datos de SofaScore...")
-                datos, evento_id, info_ronda = hacer_analisis_completo(equipo1, equipo2)
+
+                # ── Rama especial: corners antes del minuto X ──────────────
+                if foco_lower.startswith("corners_antes_"):
+                    try:
+                        minuto_x = int(foco_lower.replace("corners_antes_", ""))
+                    except ValueError:
+                        minuto_x = 45
+                    datos, lineas_py, prom_eq1, prom_eq2 = hacer_analisis_corners_tiempo(
+                        equipo1, equipo2, minuto_x
+                    )
+                    evento_id = None
+                    info_ronda = ""
+                else:
+                    datos, evento_id, info_ronda, lineas_py, prom_eq1, prom_eq2 = hacer_analisis_completo(equipo1, equipo2)
 
                 print("=== DATOS SOFASCORE ===")
                 print(datos)
                 print("======================")
 
                 self.set_status("🤖 Analizando...")
-                # Detectar si el foco es por período
-                foco_lower = foco.lower()
-                if foco_lower.endswith("_1h"):
-                    instruccion_periodo = "Usá ÚNICAMENTE los datos con prefijo 1ST_ (primer tiempo). NUNCA uses ALL_ ni 2ND_."
-                elif foco_lower.endswith("_2h"):
-                    instruccion_periodo = "Usá ÚNICAMENTE los datos con prefijo 2ND_ (segundo tiempo). NUNCA uses ALL_ ni 1ST_."
-                else:
-                    instruccion_periodo = "Usá los datos con prefijo ALL_ (partido completo)."
-
                 # Instrucción específica para el foco pedido
                 instruccion_foco = _FOCO_PROMPT.get(foco_lower, _FOCO_PROMPT["completo"])
 
@@ -1899,41 +2066,33 @@ class App(ctk.CTk):
                         "ya que eso puede afectar la intensidad y las stats esperadas."
                     )
 
-                analisis = chat_con_ia(
-                f"""Analizá el partido {equipo1} vs {equipo2} usando los datos de SofaScore.
+                # ── Generar párrafos 1 y 2 en Python (100% confiable) ─────────
+                parrafos_python = _generar_parrafos_python(
+                    foco_lower, equipo1, equipo2, lineas_py, prom_eq1, prom_eq2
+                )
 
-{ctx_comp}
-PERÍODO A USAR: {instruccion_periodo}
+                if parrafos_python:
+                    prompt_analisis = (
+                        f"Los siguientes párrafos YA ESTÁN ESCRITOS con los datos reales. "
+                        f"Copialos exactamente al inicio de tu respuesta sin modificar ni una palabra:\n\n"
+                        f"---\n{parrafos_python}\n---\n\n"
+                        f"ÚNICA TAREA: después de los párrafos de arriba, agregá UNA SOLA oración de interpretación "
+                        f"(máximo 20 palabras). Respondé: ¿el over es cómodo o ajustado con ese total? "
+                        f"¿hay alguna anomalía llamativa (ej: un equipo genera mucho pero concede poco)?\n"
+                        f"Si no hay nada concreto que agregar, no escribas nada más.\n\n"
+                        f"PROHIBIDO ABSOLUTO:\n"
+                        f"- Modificar los párrafos de arriba\n"
+                        f"- Agregar más de una oración de interpretación\n"
+                        f"- Escribir 'el contexto competitivo', 'los equipos luchan', 'la intensidad'\n"
+                        f"- Repetir información ya presente en los párrafos\n\n"
+                        f"{ctx_comp}"
+                    )
+                else:
+                    prompt_analisis = (
+                        f"Analizá el partido {equipo1} vs {equipo2}.\n{ctx_comp}\n{instruccion_foco}"
+                    )
 
-IMPORTANTE: Los datos ya incluyen los promedios pre-calculados por equipo.
-Cada línea tiene el formato: "stat: [v1, v2, ...] → promedio = X.XX"
-Los promedios son exactos — usá esos valores directamente, no los recalcules.
-
-TAREA:
-{instruccion_foco}
-
-REGLAS DE APUESTA:
-- Usá SIEMPRE la LÍNEA RECOMENDADA (no la directa) de LÍNEAS PRE-CALCULADAS.
-  La línea recomendada tiene margen ≥ 1.0 respecto al total esperado: es más
-  conservadora y tiene mayor probabilidad de entrar.
-- Indicá el nivel de confianza tal como figura entre paréntesis en los datos.
-- Si la línea directa y la recomendada difieren, podés mencionarlo: "la línea más
-  arriesgada sería X, pero la apuesta más segura es Y (confianza: Z)".
-
-REGLAS GENERALES:
-- Usá SOLO los promedios del período indicado (no mezcles ALL/1ST/2ND).
-- Total del partido = promedio_equipo1 + promedio_equipo2 (SUMÁ, no promedies).
-- Interpretá la tendencia: ¿son valores altos o bajos para esta stat? ¿El over es cómodo o ajustado?
-- CONTEXTO COMPETITIVO: {nota_comp}
-- Si hay menos de 4 partidos con datos, mencioná que la muestra es pequeña.
-- Máximo 220 palabras.
-- FORMATO: usá párrafos cortos (2-3 oraciones), con una línea en blanco entre ellos. No escribas bloques largos de texto sin respiro.
-- NO uses asteriscos ni markdown. No uses listas con guiones.
-- NO uses conocimiento propio para estadísticas.
-- Terminá con una línea en blanco y luego: "⚠️ Solo una recomendación estadística. Los resultados pueden variar." """,
-                datos_sofascore=datos
-            )
-                
+                analisis = chat_con_ia(prompt_analisis, datos_sofascore=datos)
 
                 analisis_limpio = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', analisis).strip()
 

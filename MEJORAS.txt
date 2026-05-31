@@ -5,33 +5,32 @@
 
 ── BUGS CRÍTICOS ──────────────────────────────────────────────
 
-[!] 0. CRÍTICO — Bot relanza análisis en lugar de responder contexto.
-       Después de analizar un partido, si preguntas "¿cuándo se juega?"
-       o cualquier pregunta sobre ese partido, en lugar de responder
-       con la info del análisis anterior, relanza un análisis completo.
-       Causa: main.py clasifica cualquier pregunta sobre partido como
-       "necesita ACTION:ANALIZAR" en vez de permitir respuesta normal.
-       IMPACTO: UX terrible, genera duplicados de análisis innecesarios.
+[X] 0. RESUELTO — Bot relanza análisis en lugar de responder contexto.
+       Fix: guard en main.py (post-LLM) — si es_schedule y NOT es_pred y
+       el LLM emitió ACTION:ANALIZAR por inercia de contexto, se descarta
+       la acción y se responde desde los fixtures. "Agregame corners",
+       "sumá tarjetas", etc. siguen relanzando análisis con foco puntual.
 
-[!] 0b. CRÍTICO — Bot se cuelga (loop infinito) con equipos sin fixture.
-        Usuario pide "Analizá Bayern Munich" (sin fixture próximo porque
-        está en receso) → bot dice "Dale, analizando..." y nunca responde.
-        Se cuelga indefinidamente. Timeout debe ser >30s mínimo.
-        Causa: buscar_fixture_equipo() probablemente loopea cuando no
-        encuentra partido. Necesita timeout + fallback a respuesta clara.
+[X] 0b. RESUELTO — Bot quedaba mudo con equipos sin fixture.
+        Síntoma real: el LLM emitía ACTION:ANALIZAR con equipo2 vacío y
+        el branch hacía `emit("done")` sin response → frontend perdía el
+        status "Pensando..." sin recibir nada más.
+        Fix: en main.py, cubrir los silent paths de ACTION:ANALIZAR y
+        ACTION:BUSCAR_FIXTURE — siempre se emite un mensaje claro antes
+        del done.
 
-[!] 0c. CRÍTICO — Búsqueda de equipos falla silenciosamente.
-        Usuario pide "Barcelona vs Boca" → bot devuelve análisis de
-        "Boca vs O'Higgins" sin aclarar que el partido solicitado NO
-        existe. Debería: "No encontré Barcelona vs Boca. Próximos de Boca:..."
-        Causa: buscar_fixture_equipo() retorna [] y LLM elige un partido
-        similar sin comunicar error.
+[X] 0c. RESUELTO — Búsqueda de equipos no validaba el PAR.
+        Fix: cuando el LLM nombra dos equipos, se busca una línea de
+        fixture que contenga AMBOS. Si solo uno aparece, se responde
+        "No encontré X vs Y en los próximos fixtures" en vez de caer
+        a un partido cualquiera del equipo que sí está.
 
-[!] 0d. CRÍTICO — Timezone hardcodeado UTC-3 rompe para otros usuarios.
-        Actualmente APP_TZ_OFFSET="-3" (Argentina). Usuarios de México (-6),
-        España (+2), etc. verán "hoy" en zona horaria incorrecta.
-        FIX: enviar offset del browser en cada request y usarlo en backend
-        para calcular _hoy_local() dinámicamente.
+[X] 0d. RESUELTO — Timezone dinámico por request.
+        Fix: el frontend manda `tz_offset_hours` (body) + header
+        `X-Timezone-Offset` (minutos JS) en cada request. En backend se
+        guarda en thread-local (engine.set_request_tz_offset) y se usa en
+        buscar_fixture_equipo + _obtener_fixtures_texto (re-tag de [HOY]
+        y reformat de hora). El default sigue siendo APP_TZ_OFFSET.
 
 ── UX / PRESENTACIÓN ──────────────────────────────────────────
 

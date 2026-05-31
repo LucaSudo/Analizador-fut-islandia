@@ -419,6 +419,78 @@
       "temporada_id": 89094,
       "resultado_real": null,
       "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 14:59",
+      "equipo1": "Fram Reykjavík",
+      "equipo2": "Breidablik Kópavogur",
+      "foco": "corners",
+      "prediccion": "Breidablik Kópavogur genera 9.40 corners y concede 5.60, Fram Reykjavík genera 9.20 y concede 3.00. El total esperado es 13.60.\n\nLa línea directa es Over 13.5. La apuesta recomendada es Over 12.5 (Media 🟡). Para los más conservadores: Over 10.5 (Muy alta).\n\nEl Over 12.5 parece cómodo.",
+      "evento_id": 15426833,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 14:44",
+      "equipo1": "FH Hafnarfjörður",
+      "equipo2": "ÍA Akranes",
+      "foco": "corners",
+      "prediccion": "FH Hafnarfjörður genera 4.60 corners y concede 11.00, mientras que ÍA Akranes genera 7.20 corners y concede 7.80. La LÍNEA RECOMENDADA para corners es Over 13.5, con un nivel de confianza alto.\n\nLa tendencia en corners es alta, lo que sugiere un juego ofensivo. El contexto competitivo puede influir en la intensidad del partido, ya que ambos equipos luchan por posiciones en la tabla.\n\nEl nivel de confianza en la recomendación de Over 13.5 es alto, lo que sugiere una apuesta segura en este mercado, con una línea directa que también apunta a un total alto de corners.\n\n⚠️ Solo una recomendación estadística. Los resultados pueden variar.",
+      "evento_id": 15426830,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 15:01",
+      "equipo1": "Fram Reykjavík",
+      "equipo2": "Breidablik Kópavogur",
+      "foco": "corners_1h",
+      "prediccion": "Fram Reykjavík genera 3.60 corners en el 1er tiempo y concede 1.20, Breidablik Kópavogur genera 4.80 y concede 2.20. El total esperado es 5.90.\n\nLa línea directa es Over 5.5. La apuesta recomendada es Over 4.5 (Media 🟡). Para los más conservadores: Over 2.5 (Muy alta).\n\nEl Over 4.5 parece razonable.",
+      "evento_id": 15426833,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 15:41",
+      "equipo1": "Fram Reykjavík",
+      "equipo2": "Breidablik Kópavogur",
+      "foco": "corners_antes_85",
+      "prediccion": "Fram Reykjavík genera 0.00 corners antes del minuto 85 y concede 0.00, Breidablik Kópavogur genera 0.00 y concede 0.00. El total esperado es 0.00.\n\nLa línea directa es Over -0.5. La apuesta recomendada es Over -0.5 (Baja 🔴).\nNo hay anomalías llamativas.",
+      "evento_id": null,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 15:46",
+      "equipo1": "Fram Reykjavík",
+      "equipo2": "Breidablik Kópavogur",
+      "foco": "corners_antes_85",
+      "prediccion": "Fram Reykjavík genera 8.58 corners antes del minuto 85 y concede 2.80, Breidablik Kópavogur genera 8.89 y concede 5.22. El total esperado es 12.74.\n\nLa línea directa es Over 12.5. La apuesta recomendada es Over 11.5 (Media 🟡). Para los más conservadores: Over 9.5 (Muy alta).\n\nEl Over 12.5 parece ajustado con ese total.",
+      "evento_id": null,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
+    },
+    {
+      "fecha": "2026-05-29 15:47",
+      "equipo1": "FH Hafnarfjörður",
+      "equipo2": "ÍA Akranes",
+      "foco": "corners_antes_85",
+      "prediccion": "FH Hafnarfjörður genera 4.36 corners antes del minuto 85 y concede 10.31, ÍA Akranes genera 6.78 y concede 7.33. El total esperado es 14.39.\n\nLa línea directa es Over 13.5. La apuesta recomendada es Over 12.5 (Alta 🟢). Para los más conservadores: Over 11.5 (Muy alta 🟢).\nEl Over 13.5 parece cómodo.",
+      "evento_id": null,
+      "liga_id": 188,
+      "temporada_id": 89094,
+      "resultado_real": null,
+      "acerto": null
     }
   ],
   "notas_equipos": {},

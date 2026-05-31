@@ -78,6 +78,9 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
+    # Offset horario del usuario en HORAS desde UTC (ej: -3 para ARG, -6 MX,
+    # +2 ESP). Si no viene, el engine cae al default del server.
+    tz_offset_hours: float | None = None
 
 
 # ── Foco label map ───────────────────────────────────────────────────
@@ -97,7 +100,8 @@ _COPAS = {"Champions League", "Copa Libertadores", "Copa Sudamericana"}
 # ── Core processing (runs in a thread, sends events via queue) ────────
 
 def _process(message: str, session_id: str, queue: asyncio.Queue,
-             loop: asyncio.AbstractEventLoop, user_id: str = "default"):
+             loop: asyncio.AbstractEventLoop, user_id: str = "default",
+             tz_offset_hours: float | None = None):
     """
     Full message processing flow, adapted from interfaz.py App.procesar().
     Puts SSE events into queue from a background thread using loop.call_soon_threadsafe.
@@ -116,6 +120,9 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         emit("status", {"message": msg})
 
     try:
+        # Bug #0d: fijar TZ del usuario para todo este request.
+        engine.set_request_tz_offset(tz_offset_hours)
+
         history = session_store.get_history(session_id, user_id)
 
         es_confirmacion = engine._es_respuesta_a_aclaracion(history)
@@ -219,6 +226,32 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     texto = f"No encontré próximos partidos de {equipo} en SofaScore."
                 session_store.replace_last_assistant(session_id, texto)
                 emit("response", {"type": "fixture", "content": texto})
+            else:
+                # Bug #0b: ACTION:BUSCAR_FIXTURE sin nombre → emitir mensaje
+                # claro en vez de cerrar la stream en silencio.
+                msg = "No pude identificar el equipo a buscar. Decime el nombre."
+                session_store.replace_last_assistant(session_id, msg)
+                emit("response", {"type": "chat", "content": msg})
+            emit("done", {})
+            return
+
+        # ── Guard: consulta de schedule nunca dispara análisis ───────
+        # Si el usuario preguntó por horario / fecha / rival (es_schedule)
+        # y NO pidió predicción (es_pred=False), descartamos cualquier
+        # ACTION:ANALIZAR que el LLM haya generado por inercia de contexto
+        # (típico: ya hubo un análisis en la sesión y ahora preguntan
+        # "¿cuándo se juega?" o "¿a qué hora?").
+        if es_schedule and not es_pred and "ACTION:ANALIZAR|" in respuesta:
+            limpia = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', respuesta).strip()
+            if not limpia or len(limpia) < 10:
+                fixtures_txt = engine._obtener_fixtures_texto()
+                if fixtures_txt:
+                    lineas = [l for l in fixtures_txt.splitlines() if l.strip()][:30]
+                    limpia = "Estos son los próximos partidos:\n\n" + "\n".join(lineas)
+                else:
+                    limpia = "No tengo fixtures cargados en este momento."
+            session_store.replace_last_assistant(session_id, limpia)
+            emit("response", {"type": "chat", "content": limpia})
             emit("done", {})
             return
 
@@ -319,6 +352,17 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 liga_nombre = partes[3].strip() if len(partes) > 3 else ""
 
             if not equipo1 or not equipo2:
+                # Bug #0b: antes emitíamos solo `done` y el frontend quedaba
+                # mudo después de "Pensando...". Siempre emitir un mensaje.
+                if not equipo1 and not equipo2:
+                    msg = ("No pude identificar el partido. Decime los dos "
+                           "equipos (ej: 'analizá Boca vs River').")
+                else:
+                    eq_dado = equipo1 or equipo2
+                    msg = (f"Necesito el rival para analizar a {eq_dado}. "
+                           f"Decime contra quién juega.")
+                session_store.replace_last_assistant(session_id, msg)
+                emit("response", {"type": "chat", "content": msg})
                 emit("done", {})
                 return
 
@@ -364,10 +408,62 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 candidatos.sort(key=lambda x: 0 if x[3] else 1)
                 return candidatos[0]
 
-            fix_data = (_buscar_en_fixtures(equipo1)
-                        or _buscar_en_fixtures(equipo2))
+            # Bug #0c: si el LLM nombró AMBOS equipos, el partido pedido
+            # debe existir como par. No agarrar cualquier match suelto.
+            def _buscar_par_en_fixtures(n1: str, n2: str):
+                txt = engine._obtener_fixtures_texto()
+                if not txt:
+                    return None
+                l1, l2 = n1.lower(), n2.lower()
+                liga_actual = ""
+                for linea in txt.splitlines():
+                    ls = linea.strip()
+                    if ls.endswith(":") and " vs " not in ls and "===" not in ls:
+                        liga_actual = ls[:-1].strip()
+                        continue
+                    if " vs " not in ls:
+                        continue
+                    low = ls.lower()
+                    if not (l1 in low and l2 in low):
+                        continue
+                    es_hoy = "[HOY]" in linea or "[EN CURSO]" in linea
+                    m = re.search(r'-?\s*(.+?)\s+vs\s+(.+?)(?:\s*\(|$)', ls)
+                    if not m or not liga_actual:
+                        continue
+                    home = m.group(1).strip()
+                    away = m.group(2).strip()
+                    # devolver al "equipo1 pedido" como primer elemento
+                    if l1 in home.lower():
+                        return (home, away, liga_actual, es_hoy)
+                    return (away, home, liga_actual, es_hoy)
+                return None
 
-            _safe_print(f"[fixture-fix] buscando '{equipo1}' / '{equipo2}' → {fix_data}")
+            fix_data = _buscar_par_en_fixtures(equipo1, equipo2)
+            par_no_encontrado = False
+            if not fix_data:
+                # ¿Alguno de los dos existe individualmente? Si SÍ, significa
+                # que el PAR pedido no existe (caso "Barcelona vs Boca" donde
+                # Boca tiene partido pero no contra Barcelona). Hay que avisar.
+                solo_uno = (_buscar_en_fixtures(equipo1)
+                            or _buscar_en_fixtures(equipo2))
+                if solo_uno:
+                    par_no_encontrado = True
+                else:
+                    # Ninguno de los dos aparece → fallback al comportamiento
+                    # anterior (puede ser que el LLM se equivocó con un nombre
+                    # pero el otro sí está y vale el análisis).
+                    fix_data = (_buscar_en_fixtures(equipo1)
+                                or _buscar_en_fixtures(equipo2))
+
+            _safe_print(f"[fixture-fix] buscando '{equipo1}' vs '{equipo2}' → {fix_data} (par_no_encontrado={par_no_encontrado})")
+
+            if par_no_encontrado:
+                msg = (f"No encontré {equipo1} vs {equipo2} en los próximos "
+                       f"fixtures. Verificá los equipos o pedime un partido distinto.")
+                session_store.replace_last_assistant(session_id, msg)
+                emit("response", {"type": "chat", "content": msg})
+                emit("done", {})
+                return
 
             if fix_data:
                 eq1_r, eq2_r, liga_r, es_hoy_fix = fix_data
@@ -583,8 +679,21 @@ async def chat(request: ChatRequest, http_request: Request):
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
 
+    # TZ offset: prioridad body → header X-Timezone-Offset (minutos JS) → None.
+    tz_hours = request.tz_offset_hours
+    if tz_hours is None:
+        raw = http_request.headers.get("X-Timezone-Offset")
+        if raw:
+            try:
+                # JS Date.getTimezoneOffset() devuelve minutos con signo INVERTIDO
+                # (ARG = +180). Convertimos a horas con signo correcto.
+                tz_hours = -float(raw) / 60.0
+            except ValueError:
+                tz_hours = None
+
     def run():
-        _process(request.message, request.session_id, queue, loop, user_id=user_id)
+        _process(request.message, request.session_id, queue, loop,
+                 user_id=user_id, tz_offset_hours=tz_hours)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()

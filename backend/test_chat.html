@@ -661,10 +661,16 @@
     const token = session?.access_token || "";
 
     try {
+      // tz_offset_hours: -getTimezoneOffset()/60 → ARG=-3, MX=-6, ESP=+1/+2
+      const tzOffsetHours = -new Date().getTimezoneOffset() / 60;
       const res = await fetch(`${BASE_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ message, session_id: sessionId })
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "X-Timezone-Offset": String(new Date().getTimezoneOffset()),
+        },
+        body: JSON.stringify({ message, session_id: sessionId, tz_offset_hours: tzOffsetHours })
       });
 
       if (!res.ok) {
