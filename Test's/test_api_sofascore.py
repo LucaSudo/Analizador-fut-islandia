@@ -17,17 +17,13 @@ with sync_playwright() as p:
     page.goto("https://www.sofascore.com", timeout=30000, wait_until="domcontentloaded")
     page.wait_for_timeout(3000)
 
-    ligas = {
-        "La Liga": 8,
-        "Premier League": 17,
-        "Serie A": 23,
-        "Bundesliga": 35,
-        "Ligue 1": 34,
-        "Champions League": 7,
-        "Liga Argentina": 406
+    ligas_nuevas = {
+        "Copa Libertadores": 384,
+        "Copa Sudamericana": 480,
+        "Saudi Pro League": 955,
     }
 
-    for nombre, liga_id in ligas.items():
+    for nombre, liga_id in ligas_nuevas.items():
         data = fetch_api(page, f"https://www.sofascore.com/api/v1/unique-tournament/{liga_id}/seasons")
         temporadas = data.get("seasons", [])
         if temporadas:

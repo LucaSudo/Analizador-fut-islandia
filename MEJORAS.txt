@@ -1,0 +1,76 @@
+═══════════════════════════════════════════════════════════════
+  SCOUTAI — MEJORAS PENDIENTES
+  (se completan a medida que avanza el análisis exhaustivo)
+═══════════════════════════════════════════════════════════════
+
+── BUGS CRÍTICOS ──────────────────────────────────────────────
+
+[X] 0e. RESUELTO — Relaunch involuntario de análisis en aclaraciones.
+        Fix: en main.py, post-LLM, si hay análisis previo en la sesión
+        (detectado por '⚽' / 'Total esperado' / 'ACTION:ANALIZAR' en
+        el historial reciente) Y el mensaje del usuario no contiene
+        keywords claros de re-análisis (agregame, sumá, "nuevo análisis",
+        "cuántos goles/corners/tarjetas", combinada, etc.) → se descarta
+        el ACTION:ANALIZAR del LLM y se responde desde el contexto.
+
+[X] 0f. RESUELTO — Filtro de liga en consultas de fixtures.
+        Fix: detección por keywords de liga ("islandia", "premier",
+        "francesa", "saudi", "peruana", etc.) mapeadas a nombres
+        oficiales. "Islandia" devuelve Besta deild + 1. deild. La
+        respuesta directa filtra fixtures por bloque de liga y SOLO
+        lista los partidos pedidos (no agrega Perú ni otras ligas).
+
+[X] 0g. RESUELTO — Marcar local/visitante (junto con UX #1).
+        Fix: "(L)" y "(V)" en header de análisis, lista de fixtures
+        de hoy, respuestas individuales "El próximo partido de X es:",
+        confirmación "Dale, analizando X (L) vs Y (V)..." y contexto
+        del 1x2 que va al LLM (con nombres explícitos + "(local)" /
+        "(visitante)" en vez de "el local"). Helper idempotente.
+
+── UX / PRESENTACIÓN ──────────────────────────────────────────
+
+[X] 1. RESUELTO — junto con #0g (ver arriba).
+
+[X] 2. RESUELTO — Tono servil del LLM.
+       Fix: nueva sección "TONO PROHIBIDO" en el system prompt con
+       lista explícita de frases serviles a evitar ("te puedo decir",
+       "con gusto", "si necesitás algo más no dudes", "espero haber
+       sido de ayuda", etc.) y reglas de "cómo responder en cambio"
+       (directo al grano, sin disculpas, ofrecer ayuda con seguridad).
+
+[X] 3. RESUELTO — Espacio sobrante "(Alta )".
+       Fix: función _limpiar_formato() en main.py aplicada a toda
+       respuesta del LLM antes de enviarla. Normaliza espacios antes
+       de ")" y después de "(".
+
+── COMBINADA AUTO ─────────────────────────────────────────────
+
+[X] 7. RESUELTO — "siempre agarra Perú" era un BUG REAL.
+       La combinada AUTO descartaba TODOS los partidos si existía al
+       menos uno con [HOY]/[EN CURSO]. Como Liga 1 Perú juega de noche
+       (hora ARG), su partido en curso era el único [HOY] → quedaba
+       atrapada analizando solo ese.
+       FIX: si hay <3 partidos de hoy, se completan con los próximos
+       (engine.py hacer_combinada_auto, ~línea 856).
+
+[X] 8. RESUELTO — Combinada no genera picks con equipos de poco historial.
+       Fix: umbrales de _LINEA_MINIMA_COMBINADA bajados una línea (X.5):
+         goles               1.5 → 0.5
+         corners             4.5 → 3.5
+         tarjetas_amarillas  1.5 → 0.5
+         tarjetas_rojas      0.5 → 0.5 (mantenido)
+         remates             3.5 → 2.5
+         faltas             10.5 → 8.5 (baja dos por mayor variabilidad)
+       Equipos de menor historial ahora generan picks en vez de quedar
+       siempre descartados por "línea bajo el umbral".
+
+═══════════════════════════════════════════════════════════════
+  PENDIENTES CONOCIDOS (de sesiones previas)
+═══════════════════════════════════════════════════════════════
+
+[ ] 4. Email confirmation en Supabase: decidir si dejarlo activado
+       o desactivarlo para facilitar onboarding inicial.
+
+[ ] 5. Pagos / Plan Pro: Stripe o MercadoPago (cuando haya usuarios).
+
+═══════════════════════════════════════════════════════════════
