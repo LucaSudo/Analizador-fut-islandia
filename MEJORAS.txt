@@ -3,6 +3,30 @@
   (se completan a medida que avanza el análisis exhaustivo)
 ═══════════════════════════════════════════════════════════════
 
+── BUGS CRÍTICOS ──────────────────────────────────────────────
+
+[!] 0. CRÍTICO — Bot relanza análisis en lugar de responder contexto.
+       Después de analizar un partido, si preguntas "¿cuándo se juega?"
+       o cualquier pregunta sobre ese partido, en lugar de responder
+       con la info del análisis anterior, relanza un análisis completo.
+       Causa: main.py clasifica cualquier pregunta sobre partido como
+       "necesita ACTION:ANALIZAR" en vez de permitir respuesta normal.
+       IMPACTO: UX terrible, genera duplicados de análisis innecesarios.
+
+[!] 0b. CRÍTICO — Bot se cuelga (loop infinito) con equipos sin fixture.
+        Usuario pide "Analizá Bayern Munich" (sin fixture próximo porque
+        está en receso) → bot dice "Dale, analizando..." y nunca responde.
+        Se cuelga indefinidamente. Timeout debe ser >30s mínimo.
+        Causa: buscar_fixture_equipo() probablemente loopea cuando no
+        encuentra partido. Necesita timeout + fallback a respuesta clara.
+
+[!] 0c. CRÍTICO — Búsqueda de equipos falla silenciosamente.
+        Usuario pide "Barcelona vs Boca" → bot devuelve análisis de
+        "Boca vs O'Higgins" sin aclarar que el partido solicitado NO
+        existe. Debería: "No encontré Barcelona vs Boca. Próximos de Boca:..."
+        Causa: buscar_fixture_equipo() retorna [] y LLM elige un partido
+        similar sin comunicar error.
+
 ── UX / PRESENTACIÓN ──────────────────────────────────────────
 
 [ ] 1. Indicar el equipo LOCAL en el análisis.
