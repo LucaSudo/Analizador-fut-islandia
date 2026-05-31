@@ -27,6 +27,12 @@
         Causa: buscar_fixture_equipo() retorna [] y LLM elige un partido
         similar sin comunicar error.
 
+[!] 0d. CRÍTICO — Timezone hardcodeado UTC-3 rompe para otros usuarios.
+        Actualmente APP_TZ_OFFSET="-3" (Argentina). Usuarios de México (-6),
+        España (+2), etc. verán "hoy" en zona horaria incorrecta.
+        FIX: enviar offset del browser en cada request y usarlo en backend
+        para calcular _hoy_local() dinámicamente.
+
 ── UX / PRESENTACIÓN ──────────────────────────────────────────
 
 [ ] 1. Indicar el equipo LOCAL en el análisis.
@@ -65,14 +71,9 @@
   PENDIENTES CONOCIDOS (de sesiones previas)
 ═══════════════════════════════════════════════════════════════
 
-[ ] 4. Timezone por usuario: actualmente hardcodeado UTC-3 (Argentina).
-       Para usuarios de otras regiones (México UTC-6, etc.) los partidos
-       nocturnos pueden caer mal. Solución: enviar offset del browser
-       en cada request y usarlo en backend.
-
-[ ] 5. Email confirmation en Supabase: decidir si dejarlo activado
+[ ] 4. Email confirmation en Supabase: decidir si dejarlo activado
        o desactivarlo para facilitar onboarding inicial.
 
-[ ] 6. Pagos / Plan Pro: Stripe o MercadoPago (cuando haya usuarios).
+[ ] 5. Pagos / Plan Pro: Stripe o MercadoPago (cuando haya usuarios).
 
 ═══════════════════════════════════════════════════════════════
