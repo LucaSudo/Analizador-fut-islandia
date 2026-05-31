@@ -5,6 +5,34 @@
 
 ── BUGS CRÍTICOS ──────────────────────────────────────────────
 
+[X] 0i. RESUELTO — Normalización centralizada de nombres de liga.
+        Fix arquitectónico: el mapeo de aliases vive ahora en engine.py
+        como fuente única (_LIGA_ALIASES + normalizar_liga() +
+        buscar_liga_info() + detectar_liga_en_mensaje()). main.py
+        importa esas funciones en vez de duplicar el mapeo.
+
+        Comportamiento:
+          - "islandia" matchea Besta deild karla + 1. deild karla
+            • Para LISTAR fixtures → muestra ambas divisiones
+            • Para COMBINADA AUTO → toma solo la PRIMERA (Besta deild)
+          - "liga arabe" / "saudita" / "saudi" → Saudi Pro League
+          - "argentina" / "liga argentina" / "afa" → Liga Profesional
+            Argentina (agregada a LIGAS_CONFIG con ID 155)
+          - "segunda islandesa" → 1. deild karla
+          - "francesa" → Ligue 1 + Ligue 2 (multi-match)
+
+        Funciones del engine que ahora usan normalización:
+          - hacer_combinada_auto (filtro)
+          - hacer_analisis_completo (lookup de liga)
+          - hacer_analisis_corners_tiempo (lookup)
+          - _calcular_picks_partido (lookup)
+          - _guardar_picks_combinada (lookup)
+          - main.py guard de combinada (liga_info fallback)
+
+        NOTA: el ID 155 de Liga Profesional Argentina puede no ser el
+        correcto en SofaScore. Si la temporada falla al cargar, la liga
+        se omite silenciosamente y todo lo demás sigue funcionando.
+
 [X] 0e. RESUELTO — Relaunch involuntario de análisis en aclaraciones.
         Fix: en main.py, post-LLM, si hay análisis previo en la sesión
         (detectado por '⚽' / 'Total esperado' / 'ACTION:ANALIZAR' en

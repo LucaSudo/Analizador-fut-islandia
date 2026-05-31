@@ -29,6 +29,10 @@ LIGAS_CONFIG = {
     "Copa Libertadores": 384,
     "Copa Sudamericana": 480,
     "Saudi Pro League": 955,
+    # Liga Profesional Argentina (Primera División). Si el ID falla,
+    # obtener_temporadas_actuales() la ignora silenciosamente y el resto
+    # del sistema sigue funcionando.
+    "Liga Profesional Argentina": 155,
 }
 LIGAS = {}
 

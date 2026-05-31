@@ -70,6 +70,185 @@ _client = Groq(api_key=_API_KEY_GROQ)
 # LIGAS populated at startup (same structure as fixture_loader.LIGAS)
 LIGAS: dict = {}
 
+# ── Aliases de liga (#0i) ────────────────────────────────────────────
+# Fuente única de verdad: mapeo de cómo los usuarios llaman a las
+# ligas → nombres oficiales tal como están en LIGAS / fixtures.
+# Ordenado por especificidad (los más específicos primero) para que
+# "1. deild" no sea robado por "liga 1", "premier league" antes que
+# "premier", etc.
+# Cada alias mapea a UNA LISTA de nombres oficiales. Si tiene varios,
+# normalizar_liga() devuelve la lista completa para que el caller decida
+# (mostrar todas en fixtures, o tomar solo la primera en combinada AUTO).
+_LIGA_ALIASES: list[tuple[str, list[str]]] = [
+    # ── Islandia ─────────────────────────────────────────────────
+    ("besta deild",        ["Besta deild karla"]),
+    ("primera islandesa",  ["Besta deild karla"]),
+    ("1. deild",           ["1. deild karla"]),
+    ("1 deild",            ["1. deild karla"]),
+    ("primera deild",      ["1. deild karla"]),
+    ("segunda islandesa",  ["1. deild karla"]),
+    ("segunda division islandesa",     ["1. deild karla"]),
+    ("segunda división islandesa",     ["1. deild karla"]),
+    ("islandia",           ["Besta deild karla", "1. deild karla"]),
+    ("islandesa",          ["Besta deild karla", "1. deild karla"]),
+
+    # ── Inglaterra ───────────────────────────────────────────────
+    ("premier league",     ["Premier League"]),
+    ("premier",            ["Premier League"]),
+    ("liga inglesa",       ["Premier League"]),
+    ("inglesa",            ["Premier League"]),
+    ("inglaterra",         ["Premier League"]),
+    ("epl",                ["Premier League"]),
+
+    # ── España ───────────────────────────────────────────────────
+    ("la liga",            ["La Liga"]),
+    ("laliga",             ["La Liga"]),
+    ("liga española",      ["La Liga"]),
+    ("liga espanola",      ["La Liga"]),
+    ("española",           ["La Liga"]),
+    ("espanola",           ["La Liga"]),
+    ("españa",             ["La Liga"]),
+    ("espana",             ["La Liga"]),
+    ("primera española",   ["La Liga"]),
+
+    # ── Italia ───────────────────────────────────────────────────
+    ("serie a",            ["Serie A"]),
+    ("liga italiana",      ["Serie A"]),
+    ("italiana",           ["Serie A"]),
+    ("italia",             ["Serie A"]),
+    ("calcio",             ["Serie A"]),
+
+    # ── Alemania ─────────────────────────────────────────────────
+    ("bundesliga",         ["Bundesliga"]),
+    ("liga alemana",       ["Bundesliga"]),
+    ("alemana",            ["Bundesliga"]),
+    ("alemania",           ["Bundesliga"]),
+
+    # ── Francia ──────────────────────────────────────────────────
+    ("ligue 1",            ["Ligue 1"]),
+    ("ligue1",             ["Ligue 1"]),
+    ("ligue 2",            ["Ligue 2"]),
+    ("ligue2",             ["Ligue 2"]),
+    ("segunda francesa",   ["Ligue 2"]),
+    ("liga francesa",      ["Ligue 1", "Ligue 2"]),
+    ("francesa",           ["Ligue 1", "Ligue 2"]),
+    ("francia",            ["Ligue 1", "Ligue 2"]),
+
+    # ── Champions / Copas ────────────────────────────────────────
+    ("champions league",   ["Champions League"]),
+    ("champions",          ["Champions League"]),
+    ("uefa champions",     ["Champions League"]),
+    ("ucl",                ["Champions League"]),
+    ("copa libertadores",  ["Copa Libertadores"]),
+    ("libertadores",       ["Copa Libertadores"]),
+    ("copa sudamericana",  ["Copa Sudamericana"]),
+    ("sudamericana",       ["Copa Sudamericana"]),
+
+    # ── Arabia ───────────────────────────────────────────────────
+    ("saudi pro league",   ["Saudi Pro League"]),
+    ("saudi pro",          ["Saudi Pro League"]),
+    ("saudi",              ["Saudi Pro League"]),
+    ("liga saudita",       ["Saudi Pro League"]),
+    ("liga arabe",         ["Saudi Pro League"]),
+    ("liga árabe",         ["Saudi Pro League"]),
+    ("saudita",            ["Saudi Pro League"]),
+    ("arabe",              ["Saudi Pro League"]),
+    ("árabe",              ["Saudi Pro League"]),
+    ("arabia",             ["Saudi Pro League"]),
+
+    # ── Argentina ────────────────────────────────────────────────
+    ("liga profesional argentina", ["Liga Profesional Argentina"]),
+    ("liga profesional",   ["Liga Profesional Argentina"]),
+    ("primera argentina",  ["Liga Profesional Argentina"]),
+    ("primera división argentina", ["Liga Profesional Argentina"]),
+    ("primera division argentina", ["Liga Profesional Argentina"]),
+    ("liga argentina",     ["Liga Profesional Argentina"]),
+    ("argentina",          ["Liga Profesional Argentina"]),
+    ("argentino",          ["Liga Profesional Argentina"]),
+    ("afa",                ["Liga Profesional Argentina"]),
+
+    # ── Perú ─────────────────────────────────────────────────────
+    ("liga 1 peru",        ["Liga 1 Perú"]),
+    ("liga 1 perú",        ["Liga 1 Perú"]),
+    ("liga peruana",       ["Liga 1 Perú"]),
+    ("peruana",            ["Liga 1 Perú"]),
+    ("perú",               ["Liga 1 Perú"]),
+    ("peru",               ["Liga 1 Perú"]),
+    # "liga 1" debe ir al FINAL para no robar matches a "premier league",
+    # "ligue 1", "1. deild", "liga 1 perú", etc.
+    ("liga 1",             ["Liga 1 Perú"]),
+]
+
+
+def normalizar_liga(nombre: str | None) -> list[str]:
+    """Convierte un nombre coloquial/alias de liga al/los nombre(s)
+    oficial(es) que aparece(n) en LIGAS y en los fixtures.
+
+    Retorna lista vacía si no se reconoce. Si el nombre ya ES oficial,
+    devuelve [nombre] (busca match exacto contra las claves de LIGAS o
+    LIGAS_CONFIG primero)."""
+    if not nombre:
+        return []
+    n = nombre.strip().lower()
+
+    # 1) Match exacto contra ligas oficiales (case-insensitive)
+    for nombre_oficial in LIGAS.keys():
+        if n == nombre_oficial.lower():
+            return [nombre_oficial]
+    # 2) Match parcial contra nombres oficiales (ej: "saudi pro" en
+    #    "saudi pro league" → matchea). Útil cuando el LLM emite el
+    #    nombre casi-oficial.
+    for nombre_oficial in LIGAS.keys():
+        no = nombre_oficial.lower()
+        if n in no or no in n:
+            # Pero solo si NO matchea un alias más específico abajo.
+            # Lo dejamos como segundo paso, ver más abajo.
+            pass
+    # 3) Match por alias (ordenado por especificidad)
+    for alias, ligas_oficiales in _LIGA_ALIASES:
+        if alias in n:
+            # Filtrar las que efectivamente están cargadas en LIGAS
+            disponibles = [l for l in ligas_oficiales if l in LIGAS] or ligas_oficiales
+            return disponibles
+    # 4) Fallback: match parcial contra ligas oficiales
+    for nombre_oficial in LIGAS.keys():
+        no = nombre_oficial.lower()
+        if n in no or no in n:
+            return [nombre_oficial]
+    return []
+
+
+def buscar_liga_info(nombre: str | None) -> tuple[str | None, dict | None]:
+    """Resuelve un alias/nombre de liga al primer match en LIGAS y
+    devuelve (nombre_oficial, datos_dict). Si no se encuentra, devuelve
+    (None, None). Es la versión "una sola liga" usada por funciones que
+    necesitan apuntar a UN torneo concreto (combinada AUTO, análisis
+    completo, etc.). Multi-liga lo manejan los callers con normalizar_liga."""
+    matches = normalizar_liga(nombre)
+    for nombre_oficial in matches:
+        if nombre_oficial in LIGAS:
+            return nombre_oficial, LIGAS[nombre_oficial]
+    return None, None
+
+
+def detectar_liga_en_mensaje(msg: str) -> list[str]:
+    """Igual que normalizar_liga pero busca dentro de un mensaje
+    completo (no solo un nombre). Devuelve el primer alias que matchee
+    como substring, o [] si no hay ninguno."""
+    if not msg:
+        return []
+    m = msg.lower()
+    # 1) Aliases (orden de especificidad)
+    for alias, ligas_oficiales in _LIGA_ALIASES:
+        if alias in m:
+            disponibles = [l for l in ligas_oficiales if l in LIGAS] or ligas_oficiales
+            return disponibles
+    # 2) Nombres oficiales (case-insensitive)
+    for nombre_oficial in LIGAS.keys():
+        if nombre_oficial.lower() in m:
+            return [nombre_oficial]
+    return []
+
 # Full system prompt (BASE + fixtures) — built in initialize_engine()
 SYSTEM_PROMPT: str = ""
 
@@ -349,7 +528,7 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
     Returns (contexto_str, evento_id_proximo, info_ronda, liga_info_dict).
     liga_info_dict = {id, temporada, rondas} — the actual values used.
     """
-    liga = next((v for k, v in LIGAS.items() if liga_nombre in k or k in liga_nombre), None)
+    _liga_nombre_oficial, liga = buscar_liga_info(liga_nombre)
     if not liga:
         # Liga no encontrada → devolver vacío en vez de usar una liga incorrecta
         ctx_vacio = (
@@ -361,6 +540,11 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         )
         return ctx_vacio, None, "", {"id": -1, "temporada": -1, "rondas": 0}
 
+    # #0i: normalizar al nombre oficial para que el resto de la función
+    # y el header del análisis muestren la liga correcta aunque el LLM
+    # haya enviado un alias.
+    if _liga_nombre_oficial:
+        liga_nombre = _liga_nombre_oficial
     liga_id      = liga["id"]
     temporada_id = liga["temporada"]
     rondas       = liga["rondas"]
@@ -552,10 +736,12 @@ def hacer_analisis_corners_tiempo(equipo1: str, equipo2: str, minuto: int,
     sobre los promedios de 1T/2T de SofaScore.
     Retorna (contexto, lineas_python, prom1, prom2).
     """
-    liga = next((v for k, v in LIGAS.items() if liga_nombre in k or k in liga_nombre), None)
+    _liga_nombre_oficial, liga = buscar_liga_info(liga_nombre)
     if not liga:
         return "(sin datos suficientes)\n", {}, {}, {}
 
+    if _liga_nombre_oficial:
+        liga_nombre = _liga_nombre_oficial
     liga_id      = liga["id"]
     temporada_id = liga["temporada"]
     rondas       = liga["rondas"]
@@ -874,9 +1060,11 @@ def _buscar_en_fixtures_cargados(nombre_equipo: str) -> list[str]:
 
 def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
                              stats_keys: list | None = None) -> list[dict]:
-    liga = next((v for k, v in LIGAS.items() if liga_nombre in k or k in liga_nombre), None)
+    _liga_nombre_oficial, liga = buscar_liga_info(liga_nombre)
     if not liga: return []
 
+    if _liga_nombre_oficial:
+        liga_nombre = _liga_nombre_oficial
     liga_id = liga["id"]; temporada_id = liga["temporada"]; rondas = liga["rondas"]
 
     try:
@@ -925,8 +1113,18 @@ def hacer_combinada_auto(n_picks: int = 2, progress_cb=None, liga_filtro: str = 
         return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
 
     if liga_filtro:
-        filtro_lower = liga_filtro.lower()
-        partidos = [p for p in partidos if filtro_lower in p[2].lower()]
+        # #0i: normalizar el alias del usuario al nombre oficial.
+        # Para combinada AUTO usamos SOLO la primera liga del mapeo
+        # (decisión del usuario). Si "islandia" → ["Besta deild karla",
+        # "1. deild karla"], analizamos partidos de la primera.
+        ligas_oficiales = normalizar_liga(liga_filtro)
+        if not ligas_oficiales:
+            # Alias no reconocido → no podemos filtrar, devolver vacío
+            # con info para que el formateador avise al usuario.
+            return [], {"n_liga": 0, "n_analizados": 0, "partidos": [],
+                        "liga_no_reconocida": liga_filtro}
+        liga_objetivo = ligas_oficiales[0]
+        partidos = [p for p in partidos if p[2] == liga_objetivo]
 
     if not partidos:
         return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
@@ -1027,7 +1225,7 @@ def _guardar_picks_combinada(picks: list[dict]) -> None:
         pred_texto = (f"[Combinada] Recomendación: {pick['linea_segura']} {stat_nombre}. "
                       f"Total esperado: {pick['total']:.2f} | Confianza: {pick['confianza']} "
                       f"(línea directa: {pick['linea_directa']})")
-        liga_info = next((v for k, v in LIGAS.items() if pick["liga"] in k or k in pick["liga"]), None)
+        _, liga_info = buscar_liga_info(pick["liga"])
         guardar_prediccion(
             equipo1=pick["equipo1"], equipo2=pick["equipo2"], foco=pick["stat"],
             prediccion=pred_texto, evento_id=None,

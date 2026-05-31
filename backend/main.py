@@ -95,52 +95,8 @@ def _limpiar_formato(texto: str) -> str:
     return texto
 
 
-# Bug #0f: mapa de keywords coloquiales → nombres oficiales de liga
-# tal como aparecen en LIGAS / fixtures. Usamos el primer match.
-_LIGA_KEYWORDS: list[tuple[str, list[str]]] = [
-    # más específicos primero (evitar que "liga 1" matchee "la liga")
-    ("besta deild",        ["Besta deild karla"]),
-    ("primera islandesa",  ["Besta deild karla"]),
-    ("1. deild",           ["1. deild karla"]),
-    ("segunda islandesa",  ["1. deild karla"]),
-    ("islandia",           ["Besta deild karla", "1. deild karla"]),
-    ("islandesa",          ["Besta deild karla", "1. deild karla"]),
-    ("premier league",     ["Premier League"]),
-    ("premier",            ["Premier League"]),
-    ("inglaterra",         ["Premier League"]),
-    ("inglesa",            ["Premier League"]),
-    ("la liga",            ["La Liga"]),
-    ("liga española",      ["La Liga"]),
-    ("española",           ["La Liga"]),
-    ("españa",             ["La Liga"]),
-    ("serie a",            ["Serie A"]),
-    ("italiana",           ["Serie A"]),
-    ("italia",             ["Serie A"]),
-    ("bundesliga",         ["Bundesliga"]),
-    ("alemana",            ["Bundesliga"]),
-    ("alemania",           ["Bundesliga"]),
-    ("ligue 1",            ["Ligue 1"]),
-    ("ligue 2",            ["Ligue 2"]),
-    ("francesa",           ["Ligue 1", "Ligue 2"]),
-    ("francia",            ["Ligue 1", "Ligue 2"]),
-    ("champions league",   ["Champions League"]),
-    ("champions",          ["Champions League"]),
-    ("libertadores",       ["Copa Libertadores"]),
-    ("sudamericana",       ["Copa Sudamericana"]),
-    ("saudi pro",          ["Saudi Pro League"]),
-    ("saudita",            ["Saudi Pro League"]),
-    ("saudi",              ["Saudi Pro League"]),
-    ("árabe",              ["Saudi Pro League"]),
-    ("arabe",              ["Saudi Pro League"]),
-    ("liga 1 peru",        ["Liga 1 Perú"]),
-    ("liga 1 perú",        ["Liga 1 Perú"]),
-    ("liga peruana",       ["Liga 1 Perú"]),
-    ("peruana",            ["Liga 1 Perú"]),
-    ("perú",               ["Liga 1 Perú"]),
-    ("peru",               ["Liga 1 Perú"]),
-    # "liga 1" debe estar después de los que la contienen para no robar matches
-    ("liga 1",             ["Liga 1 Perú"]),
-]
+# #0i: el mapeo de aliases de liga vive ahora en engine.py (fuente única).
+# Acá solo usamos engine.detectar_liga_en_mensaje() / engine.normalizar_liga().
 
 
 # Bug #0e: detecta cuándo el usuario está pidiendo EXPLÍCITAMENTE un
@@ -177,16 +133,6 @@ def _hay_analisis_previo(history: list) -> bool:
         if "⚽" in c or "Total esperado" in c or "ACTION:ANALIZAR|" in c:
             return True
     return False
-
-
-def _detectar_liga_filtro(msg: str) -> list[str]:
-    """Devuelve la lista de nombres de liga oficiales si el mensaje
-    referencia una liga, o [] si no detecta ninguna."""
-    m = msg.lower()
-    for kw, ligas in _LIGA_KEYWORDS:
-        if kw in m:
-            return ligas
-    return []
 
 
 # Bug #0g/#1: marcar local/visitante en cualquier línea de fixture.
@@ -271,7 +217,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             # ── Consulta genérica: listar todos los partidos del día directamente ──
             if not equipo and engine._es_consulta_todos_partidos(message):
                 fixtures_txt = engine._obtener_fixtures_texto()
-                liga_filtro = _detectar_liga_filtro(message)  # Bug #0f
+                liga_filtro = engine.detectar_liga_en_mensaje(message)  # Bug #0f/#0i
 
                 if fixtures_txt:
                     # Si se detectó liga, filtrar fixtures por bloque de liga.
@@ -685,10 +631,8 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 )
                 evento_id  = None
                 info_ronda = ""
-                liga_info  = next(
-                    (v for k, v in engine.LIGAS.items() if liga_nombre in k or k in liga_nombre),
-                    {"id": 0, "temporada": 0}
-                )
+                _, _li = engine.buscar_liga_info(liga_nombre)
+                liga_info = _li or {"id": 0, "temporada": 0}
             else:
                 datos, evento_id, info_ronda, liga_info, lineas_py, prom_eq1, prom_eq2 = engine.hacer_analisis_completo(
                     equipo1, equipo2, liga_nombre, progress_cb=status
