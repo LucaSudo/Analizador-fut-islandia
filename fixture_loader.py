@@ -77,6 +77,7 @@ def cargar_proximos_partidos():
 
     global LIGAS
     LIGAS = obtener_temporadas_actuales(sesion)
+    print(f"✅ Ligas cargadas al startup: {list(LIGAS.keys())}", flush=True)
 
     # ── Paso extra: buscar por fecha para capturar fases de grupos ──────────
     id_a_nombre = {v: k for k, v in LIGAS_CONFIG.items()}
@@ -107,8 +108,8 @@ def cargar_proximos_partidos():
                 try:
                     resp = fetch_api(sesion, f"{base}/{endpoint}")
                     candidatos.extend(resp.get("events", []))
-                except:
-                    pass
+                except Exception as e:
+                    print(f"⚠️  Error fetching {nombre_liga} /{endpoint}: {e}", flush=True)
 
             candidatos.extend(partidos_por_fecha.get(nombre_liga, []))
 
@@ -129,6 +130,7 @@ def cargar_proximos_partidos():
                     eventos.append(e)
 
             if eventos:
+                print(f"✅ {nombre_liga}: {len(eventos)} partidos cargados", flush=True)
                 contexto += f"\n{nombre_liga}:\n"
                 hoy_str = hoy_local.strftime("%d/%m/%Y")
                 for e in eventos:
