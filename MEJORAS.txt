@@ -35,10 +35,11 @@
          "KR Reykjavík (L) vs KA Akureyri"  o  "🏠 KR Reykjavík vs KA Akureyri"
        Aplica a TODOS los análisis y a la lista de fixtures.
 
-[ ] 2. Respuestas de fixtures demasiado conversacionales.
-       Al preguntar "qué partidos hay hoy" el bot responde con tono
-       de chat ("Te puedo decir que...") en vez del formato directo
-       de lista. Revisar que la ruta directa (bypass LLM) se dispare.
+[ ] 2. Tono de respuestas de fixtures demasiado servil.
+       Al preguntar "qué partidos hay hoy" responde "Te puedo decir que..."
+       (tono sumiso/esclavo). Debería mantener conversación amable y natural
+       pero con seguridad, ej: "Acá están los partidos de hoy:" + lista.
+       No es que NO sea conversacional, es que suena demasiado deferente.
 
 [ ] 3. Espacio sobrante en la etiqueta de confianza: "(Alta )" → "(Alta)".
        Hay un espacio antes del paréntesis de cierre. Bug de formato
