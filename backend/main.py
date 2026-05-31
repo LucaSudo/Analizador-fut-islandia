@@ -238,21 +238,52 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                             if "[HOY]" in l or "[EN CURSO]" in l
                         ]
                         nombre_liga_pretty = " / ".join(liga_filtro)
+
+                        # #0k: identificar ligas pedidas que NO produjeron
+                        # ninguna línea de fixture (potencialmente en receso).
+                        ligas_con_lineas = set()
+                        _liga_act = ""
+                        for l_raw in fixtures_txt.splitlines():
+                            _ls = l_raw.strip()
+                            if _ls.endswith(":") and " vs " not in _ls and "===" not in _ls:
+                                _liga_act = _ls[:-1].strip()
+                                continue
+                            if _liga_act in liga_filtro and " vs " in _ls:
+                                ligas_con_lineas.add(_liga_act)
+                        ligas_sin_lineas = [l for l in liga_filtro if l not in ligas_con_lineas]
+
+                        def _nota_receso():
+                            if not ligas_sin_lineas:
+                                return ""
+                            partes = []
+                            for l in ligas_sin_lineas:
+                                est = engine.estado_liga(l)
+                                partes.append("  • " + est.get('mensaje', f"{l}: sin partidos."))
+                            return ("\n\nℹ️ Otras ligas que pediste no tienen partidos disponibles:\n"
+                                    + "\n".join(partes))
+
                         if lineas_hoy:
                             texto = f"Acá están los partidos de hoy en {nombre_liga_pretty}:\n" + "\n".join(
                                 "• " + _marcar_local_visitante(
                                     re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', l).strip()
                                 )
                                 for l in lineas_hoy
-                            )
+                            ) + _nota_receso()
                         elif lineas_filtradas:
                             # Hay partidos pero no [HOY] → mostrar próximos
                             texto = f"No hay partidos de {nombre_liga_pretty} hoy. Próximos:\n" + "\n".join(
                                 "• " + _marcar_local_visitante(l.strip())
                                 for l in lineas_filtradas[:10]
-                            )
+                            ) + _nota_receso()
                         else:
-                            texto = f"No tengo partidos de {nombre_liga_pretty} cargados."
+                            # #0k: en vez de mensaje genérico, consultar estado
+                            # de cada liga pedida (receso, no cargada, próximo).
+                            partes = []
+                            for l in liga_filtro:
+                                est = engine.estado_liga(l)
+                                partes.append("• " + est.get('mensaje', f"{l}: sin partidos."))
+                            texto = (f"No tengo partidos de {nombre_liga_pretty} hoy:\n"
+                                     + "\n".join(partes))
                     else:
                         # Sin filtro: todos los [HOY] de todas las ligas
                         lineas_hoy = [

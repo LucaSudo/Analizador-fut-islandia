@@ -261,6 +261,112 @@ def detectar_liga_en_mensaje(msg: str) -> list[str]:
 
     return resultado
 
+
+# ── #0k: detección de estado de liga (receso, sin carga, próximo partido) ──
+# Cache con TTL para no hacer requests repetidos a SofaScore.
+import time as _time_mod
+_LIGA_ESTADO_CACHE: dict[str, tuple[float, dict]] = {}
+_LIGA_ESTADO_TTL = 3600  # 1 hora
+
+
+def estado_liga(nombre_oficial: str) -> dict:
+    """Retorna el estado actual de una liga:
+       {
+         'cargada': bool,                 # ¿está en LIGAS (cargada al startup)?
+         'tiene_partidos_proximos': bool, # ¿hay al menos 1 partido futuro?
+         'proximo_partido': dict | None,  # {'home', 'away', 'fecha_str', 'dias'}
+         'mensaje': str                   # mensaje listo para mostrar al user
+       }
+    Si la liga no está cargada → cargada=False, mensaje genérico.
+    Si está cargada pero sin próximos → en receso, intenta dar próximo.
+    Cache de 1h. Pensado para mostrar info útil cuando una combinada/listado
+    de una liga no devuelve resultados.
+    """
+    if not nombre_oficial:
+        return {'cargada': False, 'tiene_partidos_proximos': False,
+                'proximo_partido': None,
+                'mensaje': "Liga no reconocida."}
+
+    # Cache hit
+    cached = _LIGA_ESTADO_CACHE.get(nombre_oficial)
+    if cached and (_time_mod.time() - cached[0]) < _LIGA_ESTADO_TTL:
+        return cached[1]
+
+    # 1) Liga no cargada en LIGAS → no es soportada en este momento
+    if nombre_oficial not in LIGAS:
+        info = {
+            'cargada': False,
+            'tiene_partidos_proximos': False,
+            'proximo_partido': None,
+            'mensaje': f"{nombre_oficial} no está disponible actualmente (no se cargó al iniciar el servidor).",
+        }
+        _LIGA_ESTADO_CACHE[nombre_oficial] = (_time_mod.time(), info)
+        return info
+
+    # 2) Liga cargada → consultar próximos eventos a SofaScore
+    datos = LIGAS[nombre_oficial]
+    liga_id = datos['id']; temporada_id = datos['temporada']
+
+    proximo = None
+    try:
+        sesion = _nueva_sesion()
+        url = (f"https://www.sofascore.com/api/v1/unique-tournament/"
+               f"{liga_id}/season/{temporada_id}/events/next/0")
+        resp = sesion.get(url, timeout=10)
+        if resp.status_code == 200:
+            eventos = resp.json().get('events', [])
+            ahora_ts = _time_mod.time()
+            futuros = [e for e in eventos
+                       if e.get('startTimestamp', 0) > ahora_ts]
+            if futuros:
+                futuros.sort(key=lambda e: e.get('startTimestamp', 0))
+                e = futuros[0]
+                ts = e['startTimestamp']
+                from datetime import datetime as _dt, timedelta as _td
+                tz_h = get_tz_offset_hours() if 'get_tz_offset_hours' in globals() else _SERVER_TZ_AT_LOAD
+                fecha_local = _dt.utcfromtimestamp(ts) + _td(hours=tz_h)
+                dias = (fecha_local.date() - (_dt.utcnow() + _td(hours=tz_h)).date()).days
+                proximo = {
+                    'home': e.get('homeTeam', {}).get('name', '?'),
+                    'away': e.get('awayTeam', {}).get('name', '?'),
+                    'fecha_str': fecha_local.strftime('%d/%m/%Y %H:%M'),
+                    'dias': dias,
+                }
+    except Exception:
+        pass  # silencioso, fallback a "en receso"
+
+    if proximo:
+        if proximo['dias'] == 0:
+            cuando = f"hoy a las {proximo['fecha_str'].split(' ')[1]}"
+            cabecera = f"{nombre_oficial} tiene partido hoy"
+        elif proximo['dias'] == 1:
+            cuando = f"mañana ({proximo['fecha_str']})"
+            cabecera = f"{nombre_oficial} no tiene partidos hoy"
+        elif proximo['dias'] <= 7:
+            cuando = f"en {proximo['dias']} días ({proximo['fecha_str']})"
+            cabecera = f"{nombre_oficial} no tiene partidos hoy"
+        else:
+            cuando = f"el {proximo['fecha_str']} (en {proximo['dias']} días)"
+            cabecera = f"{nombre_oficial} está en pausa"
+        info = {
+            'cargada': True,
+            'tiene_partidos_proximos': True,
+            'proximo_partido': proximo,
+            'mensaje': (f"{cabecera}. Próximo: {proximo['home']} vs {proximo['away']} {cuando}."),
+        }
+    else:
+        info = {
+            'cargada': True,
+            'tiene_partidos_proximos': False,
+            'proximo_partido': None,
+            'mensaje': (f"{nombre_oficial} está en receso (fin de temporada "
+                        f"o pausa estacional). No hay partidos próximos confirmados."),
+        }
+
+    _LIGA_ESTADO_CACHE[nombre_oficial] = (_time_mod.time(), info)
+    return info
+
+
 # Full system prompt (BASE + fixtures) — built in initialize_engine()
 SYSTEM_PROMPT: str = ""
 
@@ -1124,22 +1230,46 @@ def hacer_combinada_auto(n_picks: int = 2, progress_cb=None, liga_filtro: str = 
     if not partidos:
         return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
 
+    # #0k: ligas pedidas (multi-liga separadas por coma, ej:
+    # "Premier League,Besta deild karla") + tracking de cuáles
+    # tienen/no tienen partidos para mostrar info de receso.
+    ligas_pedidas_oficiales: list[str] = []
+    ligas_sin_partidos: list[str] = []
+
     if liga_filtro:
-        # #0i: normalizar el alias del usuario al nombre oficial.
-        # Para combinada AUTO usamos SOLO la primera liga del mapeo
-        # (decisión del usuario). Si "islandia" → ["Besta deild karla",
-        # "1. deild karla"], analizamos partidos de la primera.
-        ligas_oficiales = normalizar_liga(liga_filtro)
-        if not ligas_oficiales:
-            # Alias no reconocido → no podemos filtrar, devolver vacío
-            # con info para que el formateador avise al usuario.
+        # Soportar múltiples ligas separadas por coma. Cada token se
+        # normaliza individualmente (#0i: alias → nombre oficial).
+        tokens = [s.strip() for s in liga_filtro.split(",") if s.strip()]
+        for tok in tokens:
+            for nom in normalizar_liga(tok):
+                if nom not in ligas_pedidas_oficiales:
+                    ligas_pedidas_oficiales.append(nom)
+
+        if not ligas_pedidas_oficiales:
             return [], {"n_liga": 0, "n_analizados": 0, "partidos": [],
                         "liga_no_reconocida": liga_filtro}
-        liga_objetivo = ligas_oficiales[0]
-        partidos = [p for p in partidos if p[2] == liga_objetivo]
+
+        # Filtrar partidos por cualquiera de las ligas pedidas.
+        partidos_filtrados = [p for p in partidos if p[2] in ligas_pedidas_oficiales]
+
+        # Identificar ligas pedidas que NO produjeron partidos →
+        # potencialmente en receso o sin carga. estado_liga() lo dirá.
+        ligas_con_partidos = {p[2] for p in partidos_filtrados}
+        ligas_sin_partidos = [l for l in ligas_pedidas_oficiales
+                              if l not in ligas_con_partidos]
+
+        partidos = partidos_filtrados
 
     if not partidos:
-        return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
+        # No hay partidos para ninguna de las ligas pedidas.
+        # Devolver info de receso para que el formateador la use.
+        estados = {}
+        for l in ligas_sin_partidos:
+            estados[l] = estado_liga(l)
+        return [], {"n_liga": 0, "n_analizados": 0, "partidos": [],
+                    "ligas_sin_partidos": ligas_sin_partidos,
+                    "estados_ligas": estados,
+                    "ligas_pedidas": ligas_pedidas_oficiales}
 
     n_liga = len(partidos)
     partidos_hoy = [p for p in partidos if p[3]]
@@ -1161,7 +1291,13 @@ def hacer_combinada_auto(n_picks: int = 2, progress_cb=None, liga_filtro: str = 
         picks = _calcular_picks_partido(sesion, home, away, liga_nombre)
         todos_picks.extend(picks)
 
-    debug_info = {"n_liga": n_liga, "n_analizados": len(partidos_analizados), "partidos": partidos_analizados}
+    debug_info = {"n_liga": n_liga, "n_analizados": len(partidos_analizados),
+                  "partidos": partidos_analizados,
+                  # #0k: pasamos info de receso aunque haya picks para que
+                  # el formateador agregue una nota informativa.
+                  "ligas_sin_partidos": ligas_sin_partidos,
+                  "estados_ligas": {l: estado_liga(l) for l in ligas_sin_partidos},
+                  "ligas_pedidas": ligas_pedidas_oficiales}
 
     if not todos_picks:
         return [], debug_info
@@ -1197,10 +1333,28 @@ def hacer_combinada_especifica(partidos_picks: list[tuple]) -> list[dict]:
 
 
 def _formatear_combinada(picks: list[dict], liga_filtro: str = "", debug_info: dict | None = None) -> str:
+    info = debug_info or {}
+    estados = info.get("estados_ligas", {}) or {}
+    ligas_sin_partidos = info.get("ligas_sin_partidos", []) or []
+
     if not picks:
         liga_msg = f" de {liga_filtro}" if liga_filtro else ""
-        info = debug_info or {}
         n_liga = info.get("n_liga", -1); n_anal = info.get("n_analizados", 0); partidos = info.get("partidos", [])
+
+        # #0k: Si hay ligas en receso, mensaje específico con próximos partidos.
+        if ligas_sin_partidos:
+            lineas = []
+            for l in ligas_sin_partidos:
+                est = estados.get(l, {})
+                lineas.append("• " + est.get('mensaje', f"{l}: sin partidos disponibles."))
+            return ("No pude armar una combinada porque las ligas pedidas no tienen partidos hoy:\n"
+                    + "\n".join(lineas)
+                    + "\n\nProbá con otra liga que esté activa.")
+
+        if info.get("liga_no_reconocida"):
+            return (f"No reconocí la liga '{info['liga_no_reconocida']}'. "
+                    "Ligas disponibles: " + ", ".join(sorted(LIGAS.keys())) + ".")
+
         if n_liga == 0:
             return (f"No hay partidos{liga_msg} cargados en los fixtures. "
                     "Puede que la liga no tenga partidos próximos o que no se hayan podido cargar al arrancar.")
@@ -1228,6 +1382,16 @@ def _formatear_combinada(picks: list[dict], liga_filtro: str = "", debug_info: d
     lineas.append(f"\n📊 Confianza combinada: {conf_comb} (prob. estimada: {prob*100:.0f}% — {len(picks)} selecciones multiplicadas)")
     lineas.append("⚠️ Todas las selecciones deben entrar para ganar. A mayor número de picks, menor probabilidad combinada.")
     lineas.append("⚠️ Solo una recomendación estadística. Los resultados pueden variar.")
+
+    # #0k: Si parte de las ligas pedidas no produjo partidos, avisar al user
+    # cuáles están en receso/no disponibles y por qué.
+    if ligas_sin_partidos:
+        lineas.append("")  # línea en blanco
+        lineas.append("ℹ️ Algunas ligas pedidas no tenían partidos disponibles:")
+        for l in ligas_sin_partidos:
+            est = estados.get(l, {})
+            lineas.append("  • " + est.get('mensaje', f"{l}: sin partidos disponibles."))
+
     return "\n".join(lineas)
 
 
@@ -1466,6 +1630,14 @@ CASO A — Sin equipos específicos:
   "champions" → Champions League | "premier" → Premier League | "serie a" → Serie A
   "bundesliga" → Bundesliga | "ligue 1" → Ligue 1 | "ligue 2" → Ligue 2 | "la liga" → La Liga
   "liga 1" / "liga peruana" → Liga 1 Perú | "saudi" → Saudi Pro League
+  "argentina" / "afa" → Liga Profesional Argentina | "islandia" → Besta deild karla
+
+  MULTI-LIGA: si el usuario menciona varias ligas, separalas con coma.
+  Ej: "combinada de premier e islandia" → ACTION:COMBINADA_AUTO|Premier League,Besta deild karla
+  Ej: "combinada de la liga francesa y la argentina" → ACTION:COMBINADA_AUTO|Ligue 1,Liga Profesional Argentina
+  El sistema analiza partidos de TODAS las ligas mencionadas. Si alguna está
+  en receso, te avisa en la respuesta — vos NO digas que la liga está en
+  receso (no lo sabés con certeza), dejá que el sistema lo determine.
 
 CASO B — El usuario especifica un equipo o partido:
 → ACTION:COMBINADA|equipo_local|equipo_visitante|auto|liga

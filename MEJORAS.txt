@@ -93,8 +93,50 @@
        siempre descartados por "línea bajo el umbral".
 
 ═══════════════════════════════════════════════════════════════
-  BUGS CRÍTICOS PENDIENTES (encontrados en testing de #0i)
+  BUGS CRÍTICOS PENDIENTES (encontrados en testing de #0i y #0j)
 ═══════════════════════════════════════════════════════════════
+
+[X] 0k. RESUELTO — Estado de liga (receso/no cargada) detectado y comunicado.
+        Fix GLOBAL aplicado a todas las ligas, copas y torneos.
+
+        Implementación:
+          1. engine.estado_liga(nombre_oficial) — nuevo helper con cache
+             (TTL 1h) que consulta SofaScore en vivo:
+               • cargada: ¿está en LIGAS?
+               • tiene_partidos_proximos: ¿hay al menos 1 evento futuro?
+               • proximo_partido: {home, away, fecha_str, dias}
+               • mensaje: texto listo para mostrar al user
+
+          2. hacer_combinada_auto ahora acepta multi-liga separadas por
+             coma. Ej: "Premier League,Besta deild karla". Identifica
+             cuáles ligas pedidas no produjeron partidos → debug_info.
+
+          3. _formatear_combinada usa debug_info.estados_ligas:
+             • Si NO hay picks pero hay ligas pedidas en receso →
+               mensaje específico con próximos partidos de cada una.
+             • Si SÍ hay picks pero ALGUNAS ligas estaban en receso →
+               combinada normal + nota al final explicando qué ligas
+               no tuvieron partidos.
+
+          4. Listado de fixtures en main.py: cuando una/varias ligas
+             filtradas no tienen partidos → muestra estado_liga() de
+             cada una en lugar de "No tengo partidos cargados".
+
+          5. System prompt actualizado: el LLM ahora sabe que
+             ACTION:COMBINADA_AUTO acepta multi-liga separadas por
+             coma. Se le indica explícitamente NO afirmar "en receso"
+             por su cuenta — el sistema lo determina con datos reales.
+
+        Comportamiento ejemplo (Premier + Islandia):
+          Antes: "No hay partidos de Premier League cargados."
+          Ahora: si Islandia tiene partidos:
+                 → combinada de Islandia + nota:
+                   "ℹ️ Otras ligas que pediste no tenían partidos:
+                    • Premier League está en receso..."
+                 si ambas en receso:
+                   "No pude armar combinada:
+                    • Premier League está en receso...
+                    • Besta deild karla está en pausa..."
 
 [X] 0j. RESUELTO — detectar_liga_en_mensaje() ahora soporta multi-liga.
         Fix: En engine.py, cambiar lógica de "return inmediato" a
