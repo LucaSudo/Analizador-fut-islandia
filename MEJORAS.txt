@@ -3,6 +3,109 @@
   (se completan a medida que avanza el análisis exhaustivo)
 ═══════════════════════════════════════════════════════════════
 
+── BUGS CRÍTICOS ACTIVOS ──────────────────────────────────────
+
+[X] 0m. RESUELTO — Horas de partidos: TZ unificada en UTC base + offset user.
+        CAUSA RAÍZ: fixture_loader.py usaba datetime.fromtimestamp(ts), que
+        depende del OS del servidor. En tu PC (ARG -3) formateaba como 16:15,
+        en Render (UTC) como 19:15. Inconsistencia entre dev y prod.
+
+        FIX:
+          1. fixture_loader.py: usar datetime.utcfromtimestamp(ts) →
+             fixtures siempre en UTC base.
+          2. engine._SERVER_TZ_AT_LOAD = 0.0 (UTC, ya no depende de env var).
+          3. _retag_fixtures_para_tz aplica delta = user_tz - 0 correctamente.
+          4. engine.py: líneas 583 (histórico) y 1020 (próximo partido)
+             también pasadas a UTC + offset del user.
+          5. inicio_hoy/ahora en engine.py recalculados con datetime.utcnow()
+             en lugar de datetime.now()/date.today() (que dependen del OS).
+          6. Import timezone agregado.
+
+        VERIFICADO: timestamp 1780254900 (Fylkir match):
+          - User ARG (-3) → 16:15 ✓
+          - User Islandia (0) → 19:15 ✓
+          - User CET (+1) → 20:15 ✓
+
+[X] 0l. RESUELTO — Calibración de confianza por σ (variabilidad real).
+        FIX: calcular_lineas_y_confianza() en engine.py ahora usa σ por
+        stat type. Alta = μ - 1σ (no margen fijo).
+
+          _SIGMA_POR_STAT:
+            corners=2.5, goles=1.0, tarjetas_amarillas=1.8,
+            tarjetas_rojas=0.5, remates=2.0, faltas=3.0
+            (+ variantes _1h/_2h con menor varianza)
+
+          Niveles de confianza:
+            Muy alta 🟢: margen ≥ 1.5σ
+            Alta 🟢:    margen ≥ 1.0σ
+            Media 🟡:   margen ≥ 0.5σ
+            Baja 🔴:    margen < 0.5σ
+
+        TESTEO VERIFICADO:
+          Corners 13.0 → Over 10.5 Alta ✓ (ejemplo del user)
+          Corners 8.0  → Over 5.5 Alta
+          Goles 2.8    → Over 1.5 Alta
+          Faltas 22.0  → Over 18.5 Alta
+
+        Recalibración menor de _LINEA_MINIMA_COMBINADA:
+          tarjetas_amarillas 0.5→1.5 (Over 0.5 era trivial)
+          faltas 8.5→10.5 (alineado con σ=3)
+
+        ANTES — SÍNTOMA: Total esperado 13 corners → línea directa Over 12.5.
+        Pero sistema recomienda Over 11.5 con confianza "Alta 🟢".
+        Eso significa: necesitan entrar 12 corners (1 menos del esperado).
+        En la práctica, la variabilidad es alta → muchos partidos caen
+        a 10-11 corners aunque el esperado sea 13.
+
+        CAUSA RAÍZ: La lógica de calcular_lineas_y_confianza() asigna
+        confianzas basadas en distancia del total esperado, pero NO
+        considera margin of error / variabilidad real de datos.
+
+        Ej actual (INCORRECTO):
+          Esperado 13 → Over 12.5 (LD), Over 11.5 (recomendada Alta)
+          Necesita: 12 corners (solo 1 menos del esperado)
+          Confianza: Alta (pero debería ser Media)
+
+        Ej correcto (PROPUESTO):
+          Esperado 13 → Over 12.5 (LD), Over 10.5 (recomendada Alta)
+          Necesita: 11 corners (2+ menos del esperado)
+          Confianza: Alta (respeta variabilidad real)
+
+        IMPACTO: Picks estadísticamente correctos en promedio, pero
+        en la práctica son arriesgados. Usuario pierde si toma picks
+        "Alta confianza" porque la línea es demasiado apretada respecto
+        a variabilidad real del dato.
+
+        SOLUCIÓN TÉCNICA: Modificar calcular_lineas_y_confianza() en engine.py (línea 467)
+
+          Actual: Usa margen_minimo FIJO (default 1.0). Confianzas:
+            - Muy alta 🟢: margen ≥ 2.5 (μ - 2.5)
+            - Alta 🟢:      margen ≥ 1.5 (μ - 1.5)
+            - Media 🟡:     margen ≥ 1.0 (μ - 1.0)
+            - Baja 🔴:      margen < 1.0
+
+          Problema: Para corners=13, genera Over 11.5 (margen=1.5) con
+          confianza Alta. Pero en práctica, variabilidad real es mayor.
+
+          Propuesto: Parámetro "σ_esperada" POR TIPO DE STAT:
+            corners:            σ_esperada = 2.5 (Alta = μ - 5.0 ≈ Over 8)
+            goles:              σ_esperada = 1.5 (Alta = μ - 3.0 ≈ Over 0.5)
+            tarjetas_amarillas: σ_esperada = 1.8 (Alta = μ - 3.6)
+            tarjetas_rojas:     σ_esperada = 0.5 (Alta = μ - 1.0)
+            remates:            σ_esperada = 2.0 (Alta = μ - 4.0)
+            faltas:             σ_esperada = 3.0 (Alta = μ - 6.0)
+
+          Implementación:
+            1. Crear dict _SIGMA_POR_STAT con parámetros por stat
+            2. calcular_lineas_y_confianza recibe stat_type como param
+            3. Usar σ_esperada para calibrar thresholds de confianza
+            4. Test: con corners=13 y σ=2.5 → Over 10.5 ≈ Alta (correcto)
+
+        NOTAS: Parámetros σ_esperada son ESTIMADOS. Validar contra datos
+               reales cuando sea posible. Los picks son "correctos" en
+               promedio, pero confianza debe respetar variabilidad real.
+               Fix aplica a TODAS las stats de forma consistente.
+
 ── BUGS CRÍTICOS ──────────────────────────────────────────────
 
 [X] 0i. RESUELTO — Normalización centralizada de nombres de liga.

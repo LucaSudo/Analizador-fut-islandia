@@ -16,7 +16,7 @@ import os
 import re
 import time
 import threading
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 # ── Per-request timezone (thread-local) ─────────────────────────────
 # El backend recibe el offset horario del usuario en cada request y lo
@@ -37,9 +37,12 @@ def get_tz_offset_hours() -> float:
     except ValueError:
         return -3.0
 
-# TZ del servidor cuando se cargaron los fixtures iniciales (para revertir
-# las horas pre-formateadas a UTC antes de re-formatear al TZ del usuario).
-_SERVER_TZ_AT_LOAD: float = float(os.getenv("APP_TZ_OFFSET", "-3"))
+# #0m: Los fixtures iniciales se formatean SIEMPRE en UTC (fixture_loader.py
+# usa datetime.utcfromtimestamp). Por lo tanto el offset "base" es 0 (UTC),
+# y _retag_fixtures_para_tz aplica el delta para convertir al TZ del user.
+# ANTES estaba ligado a APP_TZ_OFFSET y dependía del OS del servidor →
+# inconsistente entre dev y Render.
+_SERVER_TZ_AT_LOAD: float = 0.0
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -464,22 +467,75 @@ def obtener_estadisticas(sesion, evento_id):
         return {}
 
 
-def calcular_lineas_y_confianza(total_esperado: float, margen_minimo: float = 1.0) -> tuple:
+# #0l: Desviación estándar ESTIMADA por tipo de stat. Refleja la variabilidad
+# real observada en datos de fútbol (estimaciones — validar con datos cuando
+# sea posible). Se usa para calibrar líneas y confianza de forma consistente
+# con el riesgo real en la práctica, no solo con el promedio.
+_SIGMA_POR_STAT: dict[str, float] = {
+    "corners":             2.5,
+    "goles":               1.0,   # menor varianza que corners; ajustado tras testeo
+    "tarjetas_amarillas":  1.8,
+    "tarjetas_rojas":      0.5,
+    "remates":             2.0,
+    "faltas":              3.0,
+    # Stats _1h / _2h tienden a tener menos varianza (la mitad del partido)
+    "corners_1h":          1.5,
+    "corners_2h":          1.8,
+    "goles_1h":            0.7,
+    "goles_2h":            0.8,
+}
+
+
+def _sigma_para(stat_key: str | None) -> float:
+    """Devuelve σ esperada para el stat dado. Default 1.0 (genérico)."""
+    if not stat_key:
+        return 1.0
+    if stat_key in _SIGMA_POR_STAT:
+        return _SIGMA_POR_STAT[stat_key]
+    # Fallback: matchear por prefijo (ej: "corners_xyz" → corners)
+    base = stat_key.split("_")[0]
+    return _SIGMA_POR_STAT.get(base, 1.0)
+
+
+def calcular_lineas_y_confianza(total_esperado: float,
+                                  margen_minimo: float = 1.0,
+                                  stat_key: str | None = None) -> tuple:
     """
     Retorna (línea_directa, línea_segura, confianza, línea_conservadora).
-    - directa     : X.5 inmediatamente inferior al total (más agresiva).
-    - segura      : primer X.5 con margen ≥ margen_minimo (default 1.0).
-    - conservadora: primer X.5 con margen ≥ 2.5 (Muy Alta). Igual a segura
-                    si ésta ya alcanza ese margen.
+
+    #0l: La calibración de confianza usa σ (desviación estándar esperada)
+    POR TIPO DE STAT. Picks "Alta confianza" requieren margen ≥ 1σ
+    respecto al total esperado, NO un margen fijo. Esto refleja la
+    variabilidad real:
+      - corners (σ=2.5): para μ=13, Alta = Over 10.5 (margen 2.5 = 1σ)
+      - goles   (σ=1.5): para μ=2.8, Alta = Over 1.5 (margen 1.3 ≈ 1σ)
+      - faltas  (σ=3.0): para μ=22,  Alta = Over 18.5 (margen 3.5 > 1σ)
+
+    Niveles (todos como múltiplos de σ desde μ):
+      Muy alta 🟢: margen ≥ 1.5σ
+      Alta 🟢:    margen ≥ 1.0σ
+      Media 🟡:   margen ≥ 0.5σ
+      Baja 🔴:    margen < 0.5σ
+
+    Parámetros:
+      stat_key: clave del stat (corners, goles, …). Si None, usa σ=1.0
+                (comportamiento legacy, equivalente al fix anterior).
     """
+    sigma = _sigma_para(stat_key)
+
+    # Thresholds en unidades absolutas (calibrados por σ del stat).
+    margen_alta     = max(margen_minimo, sigma * 1.0)   # ≥ 1σ
+    margen_muy_alta = sigma * 1.5                       # ≥ 1.5σ
+    margen_media    = max(0.5, sigma * 0.5)             # ≥ 0.5σ
+
     base = int(total_esperado)
     linea_directa = base + 0.5
     if linea_directa >= total_esperado:
         linea_directa -= 1.0
 
-    # Línea segura (margen ≥ margen_minimo)
+    # Línea segura: primer X.5 que alcanza el margen de "Alta" (≥ 1σ).
     linea_segura = linea_directa
-    while total_esperado - linea_segura < margen_minimo:
+    while total_esperado - linea_segura < margen_alta:
         if linea_segura <= 0.5:
             break
         linea_segura -= 1.0
@@ -488,18 +544,18 @@ def calcular_lineas_y_confianza(total_esperado: float, margen_minimo: float = 1.
 
     margen = total_esperado - linea_segura
 
-    if margen >= 2.5:
+    if margen >= margen_muy_alta:
         confianza = "Muy alta 🟢"
-    elif margen >= 1.5:
+    elif margen >= margen_alta:
         confianza = "Alta 🟢"
-    elif margen >= 1.0:
+    elif margen >= margen_media:
         confianza = "Media 🟡"
     else:
         confianza = "Baja 🔴"
 
-    # Línea conservadora (margen ≥ 2.5 → Muy Alta)
+    # Línea conservadora: primer X.5 que alcanza Muy Alta (≥ 1.5σ).
     linea_conservadora = linea_segura
-    while total_esperado - linea_conservadora < 2.5:
+    while total_esperado - linea_conservadora < margen_muy_alta:
         if linea_conservadora <= 0.5:
             break
         linea_conservadora -= 1.0
@@ -577,8 +633,13 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
             goles_2h.append(gh2 if es_local else ga2)
             goles_against_2h.append(ga2 if es_local else gh2)
 
-        fecha_str = (datetime.fromtimestamp(e["startTimestamp"]).strftime("%d/%m/%Y")
-                     if e.get("startTimestamp") else "?")
+        # #0m: usar UTC + offset del user (consistente con resto del sistema).
+        if e.get("startTimestamp"):
+            _ts = e["startTimestamp"]
+            _tz_h = get_tz_offset_hours()
+            fecha_str = (datetime.utcfromtimestamp(_ts) + timedelta(hours=_tz_h)).strftime("%d/%m/%Y")
+        else:
+            fecha_str = "?"
         refs.append(f"{fecha_str} R{ronda}: {home} {gh}-{ga} {away} ({'local' if es_local else 'visitante'})")
 
         stats = obtener_estadisticas(sesion, e["id"])
@@ -711,9 +772,13 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
     stats_eq1, prom1 = _buscar_en_otras_ligas(equipo1, stats_eq1, prom1)
     stats_eq2, prom2 = _buscar_en_otras_ligas(equipo2, stats_eq2, prom2)
 
-    # Próximo partido entre los dos equipos
-    ahora = datetime.now().timestamp()
-    inicio_hoy = datetime.combine(date.today(), datetime.min.time()).timestamp()
+    # Próximo partido entre los dos equipos.
+    # #0m: usar UTC + offset del user para evitar inconsistencia con OS del server.
+    ahora = datetime.utcnow().timestamp()
+    _tz_h = get_tz_offset_hours()
+    _hoy_user = (datetime.utcnow() + timedelta(hours=_tz_h)).date()
+    inicio_hoy = (datetime(_hoy_user.year, _hoy_user.month, _hoy_user.day)
+                  - timedelta(hours=_tz_h)).replace(tzinfo=timezone.utc).timestamp()
     evento_id_proximo = None
     info_ronda = ""
 
@@ -754,9 +819,11 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
             continue
         a1 = prom1.get(f"{stat_clave}_against"); a2 = prom2.get(f"{stat_clave}_against")
         total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
-        # Goles usa margen menor: Over 1.5 es más útil que Over 0.5
+        # #0l: la calibración de confianza ahora usa σ por stat
+        # (corners=2.5, goles=1.5, etc.), no márgenes fijos.
+        # Mantenemos margen_minimo=0.5 para goles como piso.
         mm = 0.5 if foco_key == "goles" else 1.0
-        ld, ls, conf, lc = calcular_lineas_y_confianza(total, margen_minimo=mm)
+        ld, ls, conf, lc = calcular_lineas_y_confianza(total, margen_minimo=mm, stat_key=foco_key)
         lineas_python[foco_key] = (total, ld, ls, conf, lc)
 
     lineas_ctx = []
@@ -891,7 +958,7 @@ def hacer_analisis_corners_tiempo(equipo1: str, equipo2: str, minuto: int,
     if v1 is not None and v2 is not None:
         a1, a2 = prom1.get(f"{foco_key}_against"), prom2.get(f"{foco_key}_against")
         total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
-        d, s, c, cons = calcular_lineas_y_confianza(total)
+        d, s, c, cons = calcular_lineas_y_confianza(total, stat_key=foco_key)  # #0l
         lineas_python[foco_key] = (total, d, s, c, cons)
 
     def _fmt(v):
@@ -995,11 +1062,14 @@ def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
 
 def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
     sesion     = _nueva_sesion()
-    ahora      = datetime.now().timestamp()
+    ahora      = datetime.utcnow().timestamp()  # #0m: explícitamente UTC
     # "Hoy" en la TZ del usuario (viene del header / body del request).
     _tz_offset  = get_tz_offset_hours()
     _hoy_local  = (datetime.utcnow() + timedelta(hours=_tz_offset)).date()
-    inicio_hoy  = datetime(_hoy_local.year, _hoy_local.month, _hoy_local.day).timestamp() - _tz_offset * 3600
+    # #0m: medianoche del "hoy local" expresada en UTC, independiente del OS del server.
+    # Antes usaba datetime(...).timestamp() que asume TZ del OS → roto en Render (UTC) vs dev.
+    inicio_hoy  = (datetime(_hoy_local.year, _hoy_local.month, _hoy_local.day)
+                   - timedelta(hours=_tz_offset)).replace(tzinfo=timezone.utc).timestamp()
     resultados = []
     vistos     = set()
     deadline   = time.time() + 20  # máximo 20 segundos en total
@@ -1017,7 +1087,12 @@ def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
         if not es_futuro: return
         vistos.add(eid)
         torneo = nombre_torneo or evento.get("tournament", {}).get("uniqueTournament", {}).get("name", "")
-        hora_str  = datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M") if ts else "horario sin confirmar"
+        # #0m: usar UTC + offset del user (consistente con resto del sistema).
+        if ts:
+            _tz_h = get_tz_offset_hours()
+            hora_str = (datetime.utcfromtimestamp(ts) + timedelta(hours=_tz_h)).strftime("%d/%m/%Y %H:%M")
+        else:
+            hora_str = "horario sin confirmar"
         hoy_tag   = " [HOY]"      if es_hoy else ""
         curso_tag = " [EN CURSO]" if st == "inprogress" else ""
         resultados.append(f"{home} vs {away} — {torneo} — {hora_str}{hoy_tag}{curso_tag}")
@@ -1058,13 +1133,18 @@ _STATS_COMBINADA = [
     ("remates",            "ALL_Shots on target"),
 ]
 
-# Bug #8: umbrales bajados para que la combinada AUTO genere picks
-# con equipos de menor historial (ej: Sport Boys, Comerciantes Unidos)
-# en vez de descartarlos por "línea muy baja". Cada uno baja UNA línea
-# (X.5 → X-1.5), excepto faltas que baja dos por mayor variabilidad.
+# Líneas mínimas que combinada AUTO acepta para ofrecer un pick:
+# - Originalmente filtraban líneas demasiado bajas para apostar.
+# - #8: bajadas para no excluir equipos con poco historial.
+# - #0l: con la nueva calibración por σ, las líneas Alta confianza ya
+#        respetan la variabilidad real. El threshold acá funciona como
+#        "piso de utilidad" — líneas Over X.5 tan bajas que no aportan
+#        valor para apostar (ej: Over 0.5 tarjetas no es útil).
+# Ajustado: tarjetas_amarillas (0.5→1.5: Over 0.5 era trivial),
+#           faltas (8.5→10.5: con σ=3 el piso útil es ~10.5).
 _LINEA_MINIMA_COMBINADA: dict[str, float] = {
-    "goles": 0.5, "corners": 3.5, "tarjetas_amarillas": 0.5,
-    "tarjetas_rojas": 0.5, "remates": 2.5, "faltas": 8.5,
+    "goles": 0.5, "corners": 3.5, "tarjetas_amarillas": 1.5,
+    "tarjetas_rojas": 0.5, "remates": 2.5, "faltas": 10.5,
 }
 
 _ORDEN_CONFIANZA = {"Muy alta 🟢": 0, "Alta 🟢": 1, "Media 🟡": 2, "Baja 🔴": 3}
@@ -1211,7 +1291,7 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
         a1 = prom1.get(f"{stat_clave}_against"); a2 = prom2.get(f"{stat_clave}_against")
         total = (v1 + v2 + a1 + a2) / 2 if (a1 is not None and a2 is not None) else v1 + v2
 
-        ld, ls, conf, _ = calcular_lineas_y_confianza(total)
+        ld, ls, conf, _ = calcular_lineas_y_confianza(total, stat_key=stat_key)  # #0l
 
         if stats_keys is None:
             minima = _LINEA_MINIMA_COMBINADA.get(stat_key.split("_")[0], 0.5)

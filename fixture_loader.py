@@ -141,7 +141,13 @@ def cargar_proximos_partidos():
                     ts_e = e.get("startTimestamp", "")
                     tipo_e = e.get("status", {}).get("type", "")
                     if ts_e:
-                        fecha_str = datetime.fromtimestamp(ts_e).strftime("%d/%m/%Y %H:%M")
+                        # #0m: Formatear SIEMPRE en UTC. La conversión al
+                        # timezone del usuario la hace engine._retag_fixtures_para_tz()
+                        # con el offset correcto. datetime.fromtimestamp() depende
+                        # del OS del servidor → inconsistente entre dev y Render.
+                        fecha_str = datetime.utcfromtimestamp(ts_e).strftime("%d/%m/%Y %H:%M")
+                        # Compara contra "hoy" en TZ del server para etiqueta inicial;
+                        # _retag_fixtures_para_tz lo recalcula según user_tz.
                         if fecha_str.startswith(hoy_str):
                             fecha_str += " [HOY]"
                     else:
