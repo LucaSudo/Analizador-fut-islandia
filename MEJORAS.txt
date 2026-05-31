@@ -5,84 +5,28 @@
 
 ── BUGS CRÍTICOS ACTIVOS ──────────────────────────────────────
 
-[ ] 0n. CRÍTICO — Predicciones nunca se verifican (resultado_real y acerto quedan NULL).
-        SÍNTOMA: En Supabase, todas las predicciones tienen resultado_real=NULL
-        y acerto=NULL, incluso para partidos que ya terminaron.
+[X] 0n. RESUELTO — Predicciones sin evento_id ahora se verifican por matching.
+        FIX (memory.py):
+          1. verificar_predicciones() ahora procesa TODAS las predicciones
+             pendientes (resultado_real=None), con o sin evento_id.
+          2. Nueva función _buscar_evento_por_equipos(sesion, eq1, eq2, fecha):
+             - Consulta /sport/football/scheduled-events/{fecha} en SofaScore
+             - Busca en día exacto ± 1 día (tolerancia de TZ)
+             - Match flexible: nombre guardado puede ser alias parcial
+             - Si hay 1 candidato → usa ese evento_id
+             - Si hay >1 → desambigua por día exacto; si sigue ambiguo, skip
+          3. Nueva función _obtener_stats_evento() extrae el bloque de
+             info+stats que antes estaba inline, ahora reutilizable.
+          4. Cuando encuentra evento_id por lookup → lo persiste en Supabase
+             para que futuras verificaciones sean directas.
 
-        CAUSA RAÍZ (INVESTIGACIÓN EXHAUSTIVA):
-
-        1. Sistema de verificación EXISTE y está bien implementado:
-           - Función verificar_predicciones() en memory.py (línea 267)
-           - Se llama en initialize_engine() (engine.py:2099)
-           - Se llama en interfaz.py:2177 al iniciar app
-           - Logica: obtiene predicciones sin verificar, consulta SofaScore,
-             determina si acertó, actualiza Supabase
-
-        2. PROBLEMA CRÍTICO EN GUARDADO:
-           Predicciones se guardan CON Y SIN evento_id:
-             a) Combinada AUTO (engine.py:1487):
-                   guardar_prediccion(..., evento_id=None, ...)
-                   → NUNCA verifica (event_id es condición para filtro)
-             b) Análisis corners_tiempo (main.py:663):
-                   evento_id = None
-                   guardar_prediccion(..., evento_id=None, ...)
-                   → NUNCA verifica
-             c) Análisis completo (main.py:668-762):
-                   evento_id viene de hacer_analisis_completo()
-                   guardar_prediccion(..., evento_id=evento_id, ...)
-                   → DEBERÍA verificar si evento_id ≠ None
-
-        3. LÓGICA DEL FILTRO (memory.py:275):
-           ```python
-           pendientes = [
-               p for p in preds
-               if p.get("evento_id") and p.get("resultado_real") is None
-           ]
-           ```
-           SOLO procesa predicciones donde AMBAS:
-           - evento_id ≠ None
-           - resultado_real ≠ None
-
-           Resultado: predicciones sin evento_id NO se incluyen.
-
-        4. IMPACTO:
-           - Todas las predicciones de COMBINADA AUTO (sin evento_id)
-             NUNCA se verifican (100% quedan NULL)
-           - Análisis CORNERS_TIEMPO (sin evento_id) NUNCA se verifican
-           - Solo análisis COMPLETO podría verificarse (si evento_id ≠ None)
-
-        5. PREGUNTAS SIN RESPUESTA EN EL CÓDIGO:
-           - ¿Por qué las combinadas no se guardan con evento_id?
-             (hacer_combinada_auto no devuelve evento_id)
-           - ¿Por qué corners_tiempo tampoco? (foco_key determina tipo,
-             no es "completo" → evento_id = None siempre)
-           - ¿Se SUPONE que solo análisis completo se verifique?
-             (si es así, el diseño está roto: usuario ve predicciones
-              que nunca se verificarán)
-
-        SOLUCIÓN PROPUESTA (dos enfoques):
-
-        Opción A: Extender verificación para event_id=None
-          - Buscar partidos por (equipo1, equipo2, fecha) en SofaScore
-          - Verificar aunque no haya evento_id
-          - Riesgo: si hay 2 partidos mismo día, ambos pueden verificarse
-            con resultado equivocado
-          - Más laborioso pero incluye TODAS las predicciones
-
-        Opción B: Guardar evento_id para combinada y corners_tiempo
-          - hacer_combinada_auto() podría obtener evento_id si hay un
-            fixture para ese día con esos equipos
-          - Cambiar logic de corners_tiempo para también determinar
-            evento_id de (eq1, eq2, fecha)
-          - Más limpio pero requiere cambios en parseo de fixtures
-
-        NOTAS:
-          - memory.py tiene toda la lógica de verificación lista (buena)
-          - El problema es 100% en GUARDADO sin evento_id
-          - Predicciones se guardan pero quedan "huérfanas" sin poder
-            verificarse
-          - Sistema completo de historial y stats por foco depende de
-            tener acertos verificados → está completamente roto ahora
+        COMPORTAMIENTO:
+          - Combinada AUTO (evento_id=None): busca por equipos+fecha
+            → si el partido terminó y se identifica unívocamente → verifica
+          - Corners_tiempo (evento_id=None): igual
+          - Análisis completo (evento_id real): flujo original inalterado
+          - Si el partido todavía no terminó → skip (próxima vez que se llame)
+          - Si lookup es ambiguo → skip silencioso con warning en log
 
 [X] 0m. RESUELTO — Horas de partidos: TZ unificada en UTC base + offset user.
         CAUSA RAÍZ: fixture_loader.py usaba datetime.fromtimestamp(ts), que
@@ -185,72 +129,48 @@
                promedio, pero confianza debe respetar variabilidad real.
                Fix aplica a TODAS las stats de forma consistente.
 
-[ ] 0o. CRÍTICO — Bug #0m INCOMPLETO: interfaz.py no aplica timezone.
-        SÍNTOMA: En interfaz.py (GUI local), horarios de partidos siempre
-        en UTC base. Usuario en Argentina ve "19:15" cuando debería ver
-        "16:15". En servidor (main.py endpoints) funciona correctamente.
+[X] 0o. RESUELTO — SYSTEM_PROMPT ahora se convierte al TZ del user antes de enviarse al LLM.
+        CAUSA RAÍZ REAL: El problema no era solo interfaz.py — el SYSTEM_PROMPT
+        completo se enviaba crudo (UTC) al LLM en todas las llamadas a Groq.
+        El LLM veía horarios UTC y los repetía al user.
 
-        CAUSA RAÍZ: Hay DOS funciones _obtener_fixtures_texto():
-          1. engine.py:1234
-             - Obtiene SYSTEM_PROMPT
-             - Aplica _retag_fixtures_para_tz() con user_tz offset
-             - Devuelve texto en timezone del usuario ✅
-             - Usado por: main.py en TODOS los endpoints
-             - FUNCIONA correctamente
+        FIX (engine.py):
+          1. Nueva función _system_prompt_con_tz():
+             - Reemplaza el bloque === PRÓXIMOS PARTIDOS === dentro del
+               SYSTEM_PROMPT completo aplicando _retag_fixtures_para_tz()
+             - Retorna SYSTEM_PROMPT con fixtures en el TZ del user actual
+             - O-cost si user_tz == _SERVER_TZ_AT_LOAD (sin conversión)
+          2. Todas las llamadas a Groq usan _system_prompt_con_tz():
+             - chat_con_ia() línea ~2007: system_completo = _system_prompt_con_tz()
+             - chat_con_ia_analisis() línea ~2091: idem
+          3. _obtener_fixtures_texto() (para inyección dinámica) ya usaba
+             _retag_fixtures_para_tz() — sin cambios.
 
-          2. interfaz.py:1099
-             - Solo extrae bloque "=== PRÓXIMOS PARTIDOS ===" del
-               SYSTEM_PROMPT
-             - NO APLICA NINGUNA CONVERSIÓN DE TIMEZONE ❌
-             - Devuelve siempre en UTC (0.0) base
-             - Usado por: interfaz.py GUI local
-             - BUG: usuario ve siempre UTC, ignora su offset
+        Antes: LLM veía 19:15 (UTC) → decía "19:15" al user (ARG)
+        Después: LLM ve 16:15 (ARG offset -3) → dice "16:15" al user ✅
 
-        IMPACTO:
-          - Servidor Flask: ✅ horarios correctos por user_tz
-          - Interfaz local: ❌ horarios SIEMPRE UTC
-            • Usuario ARG (-3): ve 19:15 en lugar de 16:15 Fylkir
-            • Usuario Islandia (0): ve 19:15 ✓ (coincide)
-            • Usuario CET (+1): ve 19:15 en lugar de 20:15
+[X] 0p. RESUELTO — Búsqueda de historial robusta con doble fallback.
+        FIX (engine.py):
+          1. datetime.now() → datetime.utcnow() en obtener_partidos_equipo()
+             (consistente con #0m, no depende del OS).
+          2. Nueva función _buscar_team_id(sesion, nombre) via /search/teams.
+          3. Nueva función _partidos_via_endpoint_equipo() via /team/{id}/events/last/0:
+             - Filtra por liga_id para mantener contexto correcto
+             - Usado como fallback si búsqueda por rondas da vacío
+          4. Lógica de fallback en obtener_partidos_equipo():
+             - Estrategia 1 (rápida): búsqueda por rondas (ligass grandes)
+             - Si vacío → Estrategia 2: /team/{id}/events (ligas pequeñas/Islandia)
+             - Si sigue vacío → reintentar con ventana de 180 días
+             - Flag _ULTIMOS_DATOS_VIEJOS[nombre] = True si usa ventana expandida
+          5. precomputar_stats_equipo() lee el flag y agrega aviso en el
+             contexto del LLM: "⚠️ AVISO: se están usando datos de hasta
+             180 días atrás. La plantilla y forma pueden haber cambiado."
 
-        SOLUCIÓN:
-          interfaz.py debe reutilizar engine._obtener_fixtures_texto()
-          en lugar de su propia versión. Cambiar línea 1099:
-
-          ANTES:
-          ```python
-          def _obtener_fixtures_texto() -> str:
-              start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
-              ...
-              return SYSTEM_PROMPT[start:next_section]  # ❌ sin TZ
-          ```
-
-          DESPUÉS:
-          ```python
-          def _obtener_fixtures_texto() -> str:
-              return engine._obtener_fixtures_texto()  # ✅ con TZ
-          ```
-
-          O implementar la lógica completa:
-          ```python
-          def _obtener_fixtures_texto() -> str:
-              start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
-              if start == -1: return ""
-              next_section = SYSTEM_PROMPT.find("\n===", start + 5)
-              bruto = SYSTEM_PROMPT[start:next_section] if next_section != -1 \
-                      else SYSTEM_PROMPT[start:]
-              user_tz = engine.get_tz_offset_hours()
-              if user_tz == engine._SERVER_TZ_AT_LOAD:
-                  return bruto
-              return engine._retag_fixtures_para_tz(bruto, user_tz)
-          ```
-
-[ ] 0p. CRÍTICO — "Sin datos suficientes" aunque el equipo SÍ tiene historial.
-        SÍNTOMA: User pide análisis de "Fylkir" (Islandia) → retorna
+        ANTES — SÍNTOMA: User pide análisis de "Fylkir" (Islandia) → retorna
         "SofaScore no tiene estadísticas históricas suficientes"
         aunque el equipo existe, jugó recientemente y tiene datos.
 
-        CAUSA RAÍZ (INVESTIGACIÓN EXHAUSTIVA):
+        CAUSA RAÍZ original (INVESTIGACIÓN EXHAUSTIVA):
 
         1. PROBLEMA TIMEZONE NO REPARADO (#0m incompleto):
            obtener_partidos_equipo() línea 420:

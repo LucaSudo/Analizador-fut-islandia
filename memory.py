@@ -264,16 +264,126 @@ STATS_A_CAPTURAR = [
 ]
 
 
+def _buscar_evento_por_equipos(sesion, equipo1: str, equipo2: str, fecha_str: str) -> int | None:
+    """
+    #0n: Busca en SofaScore el evento_id de un partido terminado dado
+    dos equipos y una fecha (DD/MM/YYYY o YYYY-MM-DD). Consulta los
+    eventos del día y días adyacentes para tolerar diferencias de TZ.
+    Retorna el evento_id si encuentra match único; None si ambiguo o no encontrado.
+    """
+    # Normalizar fecha a objeto date
+    try:
+        if "/" in fecha_str:
+            fecha = datetime.strptime(fecha_str[:10], "%d/%m/%Y").date()
+        else:
+            fecha = datetime.strptime(fecha_str[:10], "%Y-%m-%d").date()
+    except (ValueError, AttributeError):
+        return None
+
+    eq1_l = equipo1.lower()
+    eq2_l = equipo2.lower()
+
+    # Buscar en el día exacto y el anterior/siguiente (tolerancia de TZ)
+    candidatos = []
+    for delta in (-1, 0, 1):
+        dia = fecha + timedelta(days=delta)
+        fecha_api = dia.strftime("%Y-%m-%d")
+        try:
+            data = sesion.get(
+                f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api}",
+                timeout=15,
+            ).json()
+        except Exception:
+            continue
+
+        for ev in data.get("events", []):
+            if ev.get("status", {}).get("type", "") != "finished":
+                continue
+            home = ev.get("homeTeam", {}).get("name", "").lower()
+            away = ev.get("awayTeam", {}).get("name", "").lower()
+            # Match flexible: el nombre guardado puede ser alias parcial
+            eq1_match = eq1_l in home or eq1_l in away or home in eq1_l or away in eq1_l
+            eq2_match = eq2_l in home or eq2_l in away or home in eq2_l or away in eq2_l
+            if eq1_match and eq2_match:
+                candidatos.append(ev["id"])
+
+    if len(candidatos) == 1:
+        return candidatos[0]
+    if len(candidatos) > 1:
+        # Ambiguo: dos partidos distintos con nombres similares en días adyacentes
+        # Preferir el del día exacto
+        try:
+            fecha_api_exacta = fecha.strftime("%Y-%m-%d")
+            data_exacta = sesion.get(
+                f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{fecha_api_exacta}",
+                timeout=15,
+            ).json()
+            ids_exactos = {ev["id"] for ev in data_exacta.get("events", [])
+                           if ev.get("status", {}).get("type", "") == "finished"}
+            overlap = [c for c in candidatos if c in ids_exactos]
+            if len(overlap) == 1:
+                return overlap[0]
+        except Exception:
+            pass
+        print(f"  ⚠️  Búsqueda ambigua ({len(candidatos)} resultados) para {equipo1} vs {equipo2} ({fecha_str})")
+    return None
+
+
+def _obtener_stats_evento(sesion, evento_id: int) -> tuple[dict, dict]:
+    """
+    Devuelve (info_evento, stats_por_periodo) para un evento_id dado.
+    info_evento: {equipo_home, equipo_away, goles_home, goles_away, ganador}
+    """
+    data_evento = sesion.get(
+        f"https://www.sofascore.com/api/v1/event/{evento_id}",
+        timeout=15,
+    ).json()
+    evento = data_evento.get("event", {})
+
+    equipo_home = evento["homeTeam"]["name"]
+    equipo_away = evento["awayTeam"]["name"]
+    goles_home  = evento.get("homeScore", {}).get("current", 0)
+    goles_away  = evento.get("awayScore", {}).get("current", 0)
+    ganador     = "home" if goles_home > goles_away else ("away" if goles_away > goles_home else "draw")
+
+    info = {
+        "marcador":    f"{equipo_home} {goles_home} - {goles_away} {equipo_away}",
+        "goles_home":  goles_home,
+        "goles_away":  goles_away,
+        "ganador":     ganador,
+        "equipo_home": equipo_home,
+        "equipo_away": equipo_away,
+    }
+
+    data_stats = sesion.get(
+        f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics",
+        timeout=15,
+    ).json()
+    stats_por_periodo: dict = {}
+    for grupo in data_stats.get("statistics", []):
+        periodo = grupo["period"]
+        stats_por_periodo.setdefault(periodo, {})
+        for g in grupo["groups"]:
+            for item in g["statisticsItems"]:
+                if item["name"] in STATS_A_CAPTURAR:
+                    stats_por_periodo[periodo][item["name"]] = {
+                        "home": item.get("home", 0),
+                        "away": item.get("away", 0),
+                    }
+
+    info["stats"] = stats_por_periodo
+    return info
+
+
 def verificar_predicciones(sesion):
     """
-    Recorre predicciones pendientes con evento_id, consulta SofaScore
-    y actualiza resultado_real y acerto en Supabase.
+    #0n: Recorre TODAS las predicciones pendientes y verifica resultados:
+    - Con evento_id → consulta directamente (flujo original).
+    - Sin evento_id → busca el partido por (equipo1, equipo2, fecha) en
+      SofaScore usando el endpoint de eventos por fecha.
     """
     preds = _predicciones()
-    pendientes = [
-        p for p in preds
-        if p.get("evento_id") and p.get("resultado_real") is None
-    ]
+    pendientes = [p for p in preds if p.get("resultado_real") is None]
 
     if not pendientes:
         print("  Sin predicciones nuevas para verificar.")
@@ -281,61 +391,58 @@ def verificar_predicciones(sesion):
 
     actualizadas = 0
     for pred in pendientes:
-        evento_id = pred["evento_id"]
+        evento_id = pred.get("evento_id")
+
         try:
-            data_evento = sesion.get(
+            # ── Resolver evento_id si no lo tiene ───────────────────
+            if not evento_id:
+                fecha_pred = pred.get("fecha", "")  # "YYYY-MM-DD HH:MM"
+                eid = _buscar_evento_por_equipos(
+                    sesion,
+                    pred.get("equipo1", ""),
+                    pred.get("equipo2", ""),
+                    fecha_pred,
+                )
+                if not eid:
+                    # No se pudo resolver → dejar para más adelante
+                    continue
+                # Guardar evento_id para futuras verificaciones
+                try:
+                    db.table("predicciones").update(
+                        {"evento_id": eid}
+                    ).eq("id", pred["id"]).execute()
+                except Exception:
+                    pass
+                evento_id = eid
+
+            # ── Verificar si el evento terminó ──────────────────────
+            status_data = sesion.get(
                 f"https://www.sofascore.com/api/v1/event/{evento_id}",
-                timeout=15
+                timeout=15,
             ).json()
-            evento = data_evento.get("event", {})
-            if evento.get("status", {}).get("type", "") != "finished":
+            if status_data.get("event", {}).get("status", {}).get("type", "") != "finished":
                 continue
 
-            equipo_home = evento["homeTeam"]["name"]
-            equipo_away = evento["awayTeam"]["name"]
-            goles_home  = evento.get("homeScore", {}).get("current", 0)
-            goles_away  = evento.get("awayScore", {}).get("current", 0)
-            ganador     = "home" if goles_home > goles_away else ("away" if goles_away > goles_home else "draw")
-
-            data_stats = sesion.get(
-                f"https://www.sofascore.com/api/v1/event/{evento_id}/statistics",
-                timeout=15
-            ).json()
-
-            stats_por_periodo: dict = {}
-            for grupo in data_stats.get("statistics", []):
-                periodo = grupo["period"]
-                stats_por_periodo.setdefault(periodo, {})
-                for g in grupo["groups"]:
-                    for item in g["statisticsItems"]:
-                        if item["name"] in STATS_A_CAPTURAR:
-                            stats_por_periodo[periodo][item["name"]] = {
-                                "home": item.get("home", 0),
-                                "away": item.get("away", 0),
-                            }
-
-            resultado = {
-                "marcador":    f"{equipo_home} {goles_home} - {goles_away} {equipo_away}",
-                "goles_home":  goles_home,
-                "goles_away":  goles_away,
-                "ganador":     ganador,
-                "equipo_home": equipo_home,
-                "equipo_away": equipo_away,
-                "stats":       stats_por_periodo,
-            }
-            acerto = _determinar_acerto(pred["prediccion"], pred["foco"], resultado)
+            # ── Obtener datos y calcular acierto ────────────────────
+            resultado = _obtener_stats_evento(sesion, evento_id)
+            acerto    = _determinar_acerto(pred["prediccion"], pred["foco"], resultado)
 
             db.table("predicciones").update({
                 "resultado_real": resultado,
                 "acerto":         acerto,
+                "evento_id":      evento_id,   # persist si vino del lookup
             }).eq("id", pred["id"]).execute()
 
             actualizadas += 1
             acerto_str = "✅ Acertó" if acerto else ("❌ Falló" if acerto is False else "⏳ Indeterminado")
-            print(f"  {equipo_home} {goles_home}-{goles_away} {equipo_away} | foco='{pred['foco']}' | {acerto_str}")
+            print(
+                f"  {resultado['equipo_home']} {resultado['goles_home']}"
+                f"-{resultado['goles_away']} {resultado['equipo_away']}"
+                f" | foco='{pred['foco']}' | {acerto_str}"
+            )
 
         except Exception as e:
-            print(f"  ⚠️  Error evento {evento_id}: {e}")
+            print(f"  ⚠️  Error pred id={pred.get('id')} evento={evento_id}: {e}")
 
     if actualizadas:
         print(f"\n✅ {actualizadas} predicción(es) verificada(s) en Supabase.")
