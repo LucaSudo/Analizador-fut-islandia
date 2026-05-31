@@ -53,11 +53,16 @@
        FIX: si hay <3 partidos de hoy, se completan con los próximos
        (engine.py hacer_combinada_auto, ~línea 856).
 
-[ ] 8. Combinada no genera picks con equipos de poco historial.
-       Sport Boys / Comerciantes Unidos tienen pocas stats en SofaScore.
-       Puede ser limitación de datos legítima, NO necesariamente umbral
-       estricto. Revisar el umbral SOLO si se repite con ligas grandes
-       (Premier, La Liga) donde sí hay historial completo.
+[X] 8. RESUELTO — Combinada no genera picks con equipos de poco historial.
+       Fix: umbrales de _LINEA_MINIMA_COMBINADA bajados una línea (X.5):
+         goles               1.5 → 0.5
+         corners             4.5 → 3.5
+         tarjetas_amarillas  1.5 → 0.5
+         tarjetas_rojas      0.5 → 0.5 (mantenido)
+         remates             3.5 → 2.5
+         faltas             10.5 → 8.5 (baja dos por mayor variabilidad)
+       Equipos de menor historial ahora generan picks en vez de quedar
+       siempre descartados por "línea bajo el umbral".
 
 ═══════════════════════════════════════════════════════════════
   PENDIENTES CONOCIDOS (de sesiones previas)

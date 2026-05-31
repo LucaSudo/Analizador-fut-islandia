@@ -754,9 +754,13 @@ _STATS_COMBINADA = [
     ("remates",            "ALL_Shots on target"),
 ]
 
+# Bug #8: umbrales bajados para que la combinada AUTO genere picks
+# con equipos de menor historial (ej: Sport Boys, Comerciantes Unidos)
+# en vez de descartarlos por "línea muy baja". Cada uno baja UNA línea
+# (X.5 → X-1.5), excepto faltas que baja dos por mayor variabilidad.
 _LINEA_MINIMA_COMBINADA: dict[str, float] = {
-    "goles": 1.5, "corners": 4.5, "tarjetas_amarillas": 1.5,
-    "tarjetas_rojas": 0.5, "remates": 3.5, "faltas": 10.5,
+    "goles": 0.5, "corners": 3.5, "tarjetas_amarillas": 0.5,
+    "tarjetas_rojas": 0.5, "remates": 2.5, "faltas": 8.5,
 }
 
 _ORDEN_CONFIANZA = {"Muy alta 🟢": 0, "Alta 🟢": 1, "Media 🟡": 2, "Baja 🔴": 3}
