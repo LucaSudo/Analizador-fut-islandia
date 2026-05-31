@@ -93,6 +93,26 @@
        siempre descartados por "línea bajo el umbral".
 
 ═══════════════════════════════════════════════════════════════
+  BUGS CRÍTICOS PENDIENTES (encontrados en testing de #0i)
+═══════════════════════════════════════════════════════════════
+
+[X] 0j. RESUELTO — detectar_liga_en_mensaje() ahora soporta multi-liga.
+        Fix: En engine.py, cambiar lógica de "return inmediato" a
+        "acumular en lista". Ahora itera TODO el mensaje e incluye
+        TODOS los aliases encontrados.
+
+        Antes: "Premier e Italia" → ["Premier League"] (ignora Italia)
+        Ahora: "Premier e Italia" → ["Premier League", "Serie A"]
+               "Liga francesa e islandia" → ["Ligue 1", "Ligue 2",
+                                              "Besta deild karla", "1. deild karla"]
+
+        Deduplicación: Si una liga matchea múltiples aliases, aparece
+        una sola vez en el resultado.
+
+        Orden preservado: Alias primero (en orden de especificidad),
+        luego nombres oficiales.
+
+═══════════════════════════════════════════════════════════════
   PENDIENTES CONOCIDOS (de sesiones previas)
 ═══════════════════════════════════════════════════════════════
 

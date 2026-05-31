@@ -232,22 +232,34 @@ def buscar_liga_info(nombre: str | None) -> tuple[str | None, dict | None]:
 
 
 def detectar_liga_en_mensaje(msg: str) -> list[str]:
-    """Igual que normalizar_liga pero busca dentro de un mensaje
-    completo (no solo un nombre). Devuelve el primer alias que matchee
-    como substring, o [] si no hay ninguno."""
+    """Busca TODOS los aliases de liga en el mensaje y devuelve la
+    union de sus ligas. Preserva orden de especificidad: alias primero
+    (en orden), luego nombres oficiales.
+
+    #0j: Soporta multi-liga. Ej: "Premier e Italia" → ["Premier League", "Serie A"]
+    """
     if not msg:
         return []
     m = msg.lower()
+    resultado = []
+    vistos = set()  # Evitar duplicados (ej: si "la liga" matchea tanto alias como nombre)
+
     # 1) Aliases (orden de especificidad)
     for alias, ligas_oficiales in _LIGA_ALIASES:
         if alias in m:
             disponibles = [l for l in ligas_oficiales if l in LIGAS] or ligas_oficiales
-            return disponibles
-    # 2) Nombres oficiales (case-insensitive)
+            for liga in disponibles:
+                if liga not in vistos:
+                    resultado.append(liga)
+                    vistos.add(liga)
+
+    # 2) Nombres oficiales (case-insensitive) — si no fueron encontrados por alias
     for nombre_oficial in LIGAS.keys():
-        if nombre_oficial.lower() in m:
-            return [nombre_oficial]
-    return []
+        if nombre_oficial.lower() in m and nombre_oficial not in vistos:
+            resultado.append(nombre_oficial)
+            vistos.add(nombre_oficial)
+
+    return resultado
 
 # Full system prompt (BASE + fixtures) — built in initialize_engine()
 SYSTEM_PROMPT: str = ""
