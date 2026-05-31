@@ -1,6 +1,18 @@
 import os
+import sys
 from curl_cffi import requests as cf_requests
 from datetime import datetime, date, timedelta
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_BACKEND = os.path.join(_HERE, "backend")
+for _p in (_BACKEND, _HERE):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    import cache_manager as _cm
+except ImportError:
+    _cm = None
 
 # Offset horario de referencia (en horas desde UTC).
 # Default: -3 (Argentina). Ajustable via env var APP_TZ_OFFSET.
@@ -46,7 +58,16 @@ def _nueva_sesion():
 def fetch_api(sesion, url):
     return sesion.get(url, timeout=15).json()
 
-def obtener_temporadas_actuales(sesion):
+def obtener_temporadas_actuales(sesion, forzar_refresh: bool = False):
+    global LIGAS
+
+    if not forzar_refresh and _cm is not None:
+        cached = _cm.get_ligas()
+        if cached:
+            print("[cache] LIGAS → hit (saltando 28 llamadas al proxy)")
+            LIGAS = cached
+            return cached
+
     ligas = {}
     for nombre, liga_id in LIGAS_CONFIG.items():
         try:
@@ -67,19 +88,34 @@ def obtener_temporadas_actuales(sesion):
                 }
         except:
             pass
-    global LIGAS
     LIGAS = ligas
+    if _cm is not None and ligas:
+        _cm.set_ligas(ligas)
+        print("[cache] LIGAS → guardado en Supabase (TTL 24h)")
     return ligas
 
-def cargar_proximos_partidos():
+def cargar_proximos_partidos(forzar_refresh: bool = False):
+    global LIGAS
+
+    # ── Caché check ──────────────────────────────────────────────────
+    if not forzar_refresh and _cm is not None:
+        cached = _cm.get_fixtures_texto()
+        if cached:
+            print("[cache] fixtures → hit (saltando ~60 llamadas al proxy)")
+            if not LIGAS:
+                try:
+                    sesion = _nueva_sesion()
+                    LIGAS = obtener_temporadas_actuales(sesion)
+                except Exception as e:
+                    print(f"[cache] fixtures hit pero LIGAS falló: {e}")
+            return cached
+
     contexto = "=== PRÓXIMOS PARTIDOS POR LIGA ===\n"
     ahora = datetime.now().timestamp()
     inicio_hoy = _inicio_hoy_utc()
     hoy_local   = _hoy_local()
 
     sesion = _nueva_sesion()
-
-    global LIGAS
     LIGAS = obtener_temporadas_actuales(sesion)
 
     # ── Paso extra: buscar por fecha para capturar fases de grupos ──────────
@@ -156,5 +192,10 @@ def cargar_proximos_partidos():
                     contexto += f"  - {home} vs {away} ({fecha_str}{estado_str})\n"
         except:
             pass
+
+    # ── Guardar en caché para los próximos cold starts ───────────────
+    if _cm is not None:
+        _cm.set_fixtures_texto(contexto)
+        print("[cache] fixtures → guardado en Supabase (TTL 2h)")
 
     return contexto

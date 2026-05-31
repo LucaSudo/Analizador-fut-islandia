@@ -10,7 +10,7 @@ API pública (idéntica a la versión con JSON local):
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from supabase_client import db
 

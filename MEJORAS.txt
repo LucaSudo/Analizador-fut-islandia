@@ -5,6 +5,85 @@
 
 ── BUGS CRÍTICOS ACTIVOS ──────────────────────────────────────
 
+[ ] 0n. CRÍTICO — Predicciones nunca se verifican (resultado_real y acerto quedan NULL).
+        SÍNTOMA: En Supabase, todas las predicciones tienen resultado_real=NULL
+        y acerto=NULL, incluso para partidos que ya terminaron.
+
+        CAUSA RAÍZ (INVESTIGACIÓN EXHAUSTIVA):
+
+        1. Sistema de verificación EXISTE y está bien implementado:
+           - Función verificar_predicciones() en memory.py (línea 267)
+           - Se llama en initialize_engine() (engine.py:2099)
+           - Se llama en interfaz.py:2177 al iniciar app
+           - Logica: obtiene predicciones sin verificar, consulta SofaScore,
+             determina si acertó, actualiza Supabase
+
+        2. PROBLEMA CRÍTICO EN GUARDADO:
+           Predicciones se guardan CON Y SIN evento_id:
+             a) Combinada AUTO (engine.py:1487):
+                   guardar_prediccion(..., evento_id=None, ...)
+                   → NUNCA verifica (event_id es condición para filtro)
+             b) Análisis corners_tiempo (main.py:663):
+                   evento_id = None
+                   guardar_prediccion(..., evento_id=None, ...)
+                   → NUNCA verifica
+             c) Análisis completo (main.py:668-762):
+                   evento_id viene de hacer_analisis_completo()
+                   guardar_prediccion(..., evento_id=evento_id, ...)
+                   → DEBERÍA verificar si evento_id ≠ None
+
+        3. LÓGICA DEL FILTRO (memory.py:275):
+           ```python
+           pendientes = [
+               p for p in preds
+               if p.get("evento_id") and p.get("resultado_real") is None
+           ]
+           ```
+           SOLO procesa predicciones donde AMBAS:
+           - evento_id ≠ None
+           - resultado_real ≠ None
+
+           Resultado: predicciones sin evento_id NO se incluyen.
+
+        4. IMPACTO:
+           - Todas las predicciones de COMBINADA AUTO (sin evento_id)
+             NUNCA se verifican (100% quedan NULL)
+           - Análisis CORNERS_TIEMPO (sin evento_id) NUNCA se verifican
+           - Solo análisis COMPLETO podría verificarse (si evento_id ≠ None)
+
+        5. PREGUNTAS SIN RESPUESTA EN EL CÓDIGO:
+           - ¿Por qué las combinadas no se guardan con evento_id?
+             (hacer_combinada_auto no devuelve evento_id)
+           - ¿Por qué corners_tiempo tampoco? (foco_key determina tipo,
+             no es "completo" → evento_id = None siempre)
+           - ¿Se SUPONE que solo análisis completo se verifique?
+             (si es así, el diseño está roto: usuario ve predicciones
+              que nunca se verificarán)
+
+        SOLUCIÓN PROPUESTA (dos enfoques):
+
+        Opción A: Extender verificación para event_id=None
+          - Buscar partidos por (equipo1, equipo2, fecha) en SofaScore
+          - Verificar aunque no haya evento_id
+          - Riesgo: si hay 2 partidos mismo día, ambos pueden verificarse
+            con resultado equivocado
+          - Más laborioso pero incluye TODAS las predicciones
+
+        Opción B: Guardar evento_id para combinada y corners_tiempo
+          - hacer_combinada_auto() podría obtener evento_id si hay un
+            fixture para ese día con esos equipos
+          - Cambiar logic de corners_tiempo para también determinar
+            evento_id de (eq1, eq2, fecha)
+          - Más limpio pero requiere cambios en parseo de fixtures
+
+        NOTAS:
+          - memory.py tiene toda la lógica de verificación lista (buena)
+          - El problema es 100% en GUARDADO sin evento_id
+          - Predicciones se guardan pero quedan "huérfanas" sin poder
+            verificarse
+          - Sistema completo de historial y stats por foco depende de
+            tener acertos verificados → está completamente roto ahora
+
 [X] 0m. RESUELTO — Horas de partidos: TZ unificada en UTC base + offset user.
         CAUSA RAÍZ: fixture_loader.py usaba datetime.fromtimestamp(ts), que
         depende del OS del servidor. En tu PC (ARG -3) formateaba como 16:15,
@@ -105,6 +184,163 @@
                reales cuando sea posible. Los picks son "correctos" en
                promedio, pero confianza debe respetar variabilidad real.
                Fix aplica a TODAS las stats de forma consistente.
+
+[ ] 0o. CRÍTICO — Bug #0m INCOMPLETO: interfaz.py no aplica timezone.
+        SÍNTOMA: En interfaz.py (GUI local), horarios de partidos siempre
+        en UTC base. Usuario en Argentina ve "19:15" cuando debería ver
+        "16:15". En servidor (main.py endpoints) funciona correctamente.
+
+        CAUSA RAÍZ: Hay DOS funciones _obtener_fixtures_texto():
+          1. engine.py:1234
+             - Obtiene SYSTEM_PROMPT
+             - Aplica _retag_fixtures_para_tz() con user_tz offset
+             - Devuelve texto en timezone del usuario ✅
+             - Usado por: main.py en TODOS los endpoints
+             - FUNCIONA correctamente
+
+          2. interfaz.py:1099
+             - Solo extrae bloque "=== PRÓXIMOS PARTIDOS ===" del
+               SYSTEM_PROMPT
+             - NO APLICA NINGUNA CONVERSIÓN DE TIMEZONE ❌
+             - Devuelve siempre en UTC (0.0) base
+             - Usado por: interfaz.py GUI local
+             - BUG: usuario ve siempre UTC, ignora su offset
+
+        IMPACTO:
+          - Servidor Flask: ✅ horarios correctos por user_tz
+          - Interfaz local: ❌ horarios SIEMPRE UTC
+            • Usuario ARG (-3): ve 19:15 en lugar de 16:15 Fylkir
+            • Usuario Islandia (0): ve 19:15 ✓ (coincide)
+            • Usuario CET (+1): ve 19:15 en lugar de 20:15
+
+        SOLUCIÓN:
+          interfaz.py debe reutilizar engine._obtener_fixtures_texto()
+          en lugar de su propia versión. Cambiar línea 1099:
+
+          ANTES:
+          ```python
+          def _obtener_fixtures_texto() -> str:
+              start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
+              ...
+              return SYSTEM_PROMPT[start:next_section]  # ❌ sin TZ
+          ```
+
+          DESPUÉS:
+          ```python
+          def _obtener_fixtures_texto() -> str:
+              return engine._obtener_fixtures_texto()  # ✅ con TZ
+          ```
+
+          O implementar la lógica completa:
+          ```python
+          def _obtener_fixtures_texto() -> str:
+              start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
+              if start == -1: return ""
+              next_section = SYSTEM_PROMPT.find("\n===", start + 5)
+              bruto = SYSTEM_PROMPT[start:next_section] if next_section != -1 \
+                      else SYSTEM_PROMPT[start:]
+              user_tz = engine.get_tz_offset_hours()
+              if user_tz == engine._SERVER_TZ_AT_LOAD:
+                  return bruto
+              return engine._retag_fixtures_para_tz(bruto, user_tz)
+          ```
+
+[ ] 0p. CRÍTICO — "Sin datos suficientes" aunque el equipo SÍ tiene historial.
+        SÍNTOMA: User pide análisis de "Fylkir" (Islandia) → retorna
+        "SofaScore no tiene estadísticas históricas suficientes"
+        aunque el equipo existe, jugó recientemente y tiene datos.
+
+        CAUSA RAÍZ (INVESTIGACIÓN EXHAUSTIVA):
+
+        1. PROBLEMA TIMEZONE NO REPARADO (#0m incompleto):
+           obtener_partidos_equipo() línea 420:
+           ```python
+           ahora = datetime.now().timestamp()
+           ```
+           ❌ Usa datetime.now() que depende del OS.
+           ✅ Debería ser datetime.utcnow() (consistente con #0m).
+
+           Impacto: Cálculo de `cutoff` (línea 421) depende de ahora:
+           ```python
+           cutoff = ahora - MAX_DIAS_HISTORIAL * 86400
+           ```
+           Si ahora es incorrecta, cutoff es incorrecta → filtra
+           partidos válidos como "demasiado antiguos".
+
+        2. BÚSQUEDA SILENCIOSA DE PARTIDOS:
+           obtener_partidos_equipo() línea 424-437:
+           - Busca en rondas: desde `rondas_totales + 1` hasta
+             `rondas_totales - ultimas_rondas - 6` (rango de -5 rondas)
+           - Si no encuentra partidos "finished" en ese rango →
+             retorna lista VACÍA
+           - No hay error ni log para indicar "búsqueda falló"
+           - Cadena silenciosa: partidos_vacios → stats_vacios →
+             lineas_ctx_vacios → "sin datos suficientes"
+
+        3. PROBLEMA ESPECÍFICO DE LIGAS ISLANDESAS:
+           - "1. deild karla" (Islandia) es una liga PEQUEÑA
+           - Temporada puede tener formato distinto de ligas grandes
+           - SofaScore puede tener:
+             • Pocas rondas configuradas
+             • Partidos en rondas no-numeradas
+             • Datos con estructura diferente
+           - obtener_partidos_equipo() busca rondas por número
+             → puede no encontrar nada si estructura es diferente
+
+        4. FILTRO CUTOFF PROBLEMÁTICO:
+           MAX_DIAS_HISTORIAL está definido en engine.py.
+           Si MAX_DIAS_HISTORIAL es demasiado pequeño (ej: 30 días),
+           y el equipo no jugó en últimos 30 días (receso) →
+           todos los partidos filtrados → "sin datos".
+
+        IMPACTO:
+          - Usuarios no pueden analizar equipos de ligas "pequeñas"
+            (Islandia, países nórdicos, segunda división, etc.)
+          - Error silencioso: no sabe si es:
+            a) Equipo no existe en SofaScore
+            b) Equipo existe pero no tiene historial
+            c) Historial existe pero está fuera del rango buscado
+            d) Búsqueda en rondas no cubre la estructura real
+          - Muy especialmente:
+            - Temporadas nuevas (receso: cutoff filtra todo)
+            - Ligas con pocas rondas (busca 5 rondas pero hay solo 3)
+            - Cambios en estructura de temporada (formato grupo, etc.)
+
+        SOLUCIONES REQUERIDAS:
+
+        1. FIX INMEDIATO (timezone #0m incompleto):
+           Cambiar línea 420:
+           ```python
+           ahora = datetime.utcnow().timestamp()  # ✅ UTC, consistente
+           ```
+
+        2. FIX ROBUSTO (búsqueda de partidos):
+           a) Expandir rango de búsqueda:
+              - Buscar desde ronda 1 hasta ronda actual + 5
+              - No solo últimas 5 rondas
+           b) Fallback a búsqueda por equipo global:
+              - Si no encuentra en rondas específicas, buscar
+                evento que incluya al equipo en la temporada
+           c) Logging para debugging:
+              - Log cuando no encuentra partidos
+              - Log del rango de rondas buscadas
+              - Log del cutoff aplicado
+
+        3. FIX DIAGNOSTICO (guiar usuario):
+           - Cuando no hay datos, distinguir:
+             • "Equipo no existe en SofaScore"
+             • "Equipo sin historial aún (receso/temporada nueva)"
+             • "Historial más viejo que MAX_DIAS_HISTORIAL"
+           - Usar estado_liga() (#0k) para dar contexto
+
+        NOTAS:
+          - Problema compuesto: timezone #0m + búsqueda limitada
+          - Usuario ve "sin datos" pero datos existen en SofaScore
+          - Similar a #0m: desacoplamiento entre lógica y realidad
+          - Afecta especialmente a:
+            - Equipos de ligas pequeñas
+            - Temporadas nuevas / en receso
+            - Equipos recién subidos de categoría
 
 ── BUGS CRÍTICOS ──────────────────────────────────────────────
 

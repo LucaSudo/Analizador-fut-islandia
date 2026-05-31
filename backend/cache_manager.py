@@ -22,6 +22,10 @@ for _p in (_HERE, _ROOT):
 from supabase_client import db
 
 PARTIDOS_TTL_HORAS = 6
+FIXTURES_TTL_HORAS = 2
+LIGAS_TTL_HORAS    = 24
+_FIXTURES_CACHE_KEY = "fixtures_texto"
+_LIGAS_CACHE_KEY    = "ligas_config"
 
 
 # ── Stats de un partido terminado ────────────────────────────────────
@@ -93,3 +97,84 @@ def set_partidos_equipo(equipo: str, liga_id: int, temporada_id: int, partidos: 
         }).execute()
     except Exception as e:
         print(f"⚠️  Cache write error (partidos {equipo}): {e}")
+
+
+# ── Texto de fixtures (próximos partidos cargados al inicio) ─────────
+
+def get_fixtures_texto() -> str | None:
+    """Retorna el texto de fixtures cacheado (válido 2h), o None si expiró/no existe."""
+    try:
+        res = (db.table("partidos_equipo_cache")
+                 .select("partidos, updated_at")
+                 .eq("id", _FIXTURES_CACHE_KEY)
+                 .execute())
+        if res.data:
+            row = res.data[0]
+            updated_str = row["updated_at"]
+            if updated_str.endswith("Z"):
+                updated_str = updated_str[:-1] + "+00:00"
+            updated = datetime.fromisoformat(updated_str)
+            now_utc = datetime.now(timezone.utc)
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if now_utc - updated < timedelta(hours=FIXTURES_TTL_HORAS):
+                texto = row["partidos"]
+                if isinstance(texto, str):
+                    return texto
+                # Se guardó como lista con un solo elemento (upsert de texto)
+                if isinstance(texto, list) and texto:
+                    return texto[0]
+    except Exception as e:
+        print(f"⚠️  Cache read error (fixtures): {e}")
+    return None
+
+
+def set_fixtures_texto(texto: str):
+    """Guarda el texto de fixtures en Supabase con TTL de 2 horas."""
+    try:
+        db.table("partidos_equipo_cache").upsert({
+            "id":         _FIXTURES_CACHE_KEY,
+            "partidos":   texto,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        print(f"⚠️  Cache write error (fixtures): {e}")
+
+
+# ── Dict de ligas (IDs, temporadas, rondas) ──────────────────────────
+
+def get_ligas() -> dict | None:
+    """Retorna el dict LIGAS cacheado (válido 24h), o None si expiró/no existe."""
+    try:
+        res = (db.table("partidos_equipo_cache")
+                 .select("partidos, updated_at")
+                 .eq("id", _LIGAS_CACHE_KEY)
+                 .execute())
+        if res.data:
+            row = res.data[0]
+            updated_str = row["updated_at"]
+            if updated_str.endswith("Z"):
+                updated_str = updated_str[:-1] + "+00:00"
+            updated = datetime.fromisoformat(updated_str)
+            now_utc = datetime.now(timezone.utc)
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if now_utc - updated < timedelta(hours=LIGAS_TTL_HORAS):
+                data = row["partidos"]
+                if isinstance(data, dict):
+                    return data
+    except Exception as e:
+        print(f"⚠️  Cache read error (ligas): {e}")
+    return None
+
+
+def set_ligas(ligas: dict):
+    """Guarda el dict LIGAS en Supabase con TTL de 24 horas."""
+    try:
+        db.table("partidos_equipo_cache").upsert({
+            "id":         _LIGAS_CACHE_KEY,
+            "partidos":   ligas,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        print(f"⚠️  Cache write error (ligas): {e}")

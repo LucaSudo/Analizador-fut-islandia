@@ -410,6 +410,72 @@ _STATS_A_PRECOMPUTAR = [
 
 # ── SofaScore scraping ───────────────────────────────────────────────
 
+def _buscar_team_id(sesion, nombre_equipo: str) -> int | None:
+    """
+    #0p: Busca el team_id en SofaScore por nombre. Usado para fallback
+    cuando la búsqueda por rondas no devuelve nada (ligas pequeñas,
+    receso, estructura de temporada distinta).
+    """
+    try:
+        data = fetch_api(
+            sesion,
+            f"https://www.sofascore.com/api/v1/search/teams/{nombre_equipo}"
+        )
+        teams = data.get("teams") or []
+        nl = nombre_equipo.lower()
+        # Primero match exacto (case-insensitive)
+        for t in teams:
+            if t.get("name", "").lower() == nl:
+                return t.get("id")
+        # Luego match parcial
+        for t in teams:
+            if nl in t.get("name", "").lower():
+                return t.get("id")
+    except Exception as e:
+        print(f"[#0p] _buscar_team_id falló para '{nombre_equipo}': {e}")
+    return None
+
+
+def _partidos_via_endpoint_equipo(sesion, nombre_equipo: str, liga_id: int,
+                                   cutoff: float, ultimas_rondas: int = 5) -> list:
+    """
+    #0p: Fallback que usa /team/{id}/events para obtener partidos directos
+    del equipo. Útil cuando la búsqueda por rondas falla (Islandia, etc.).
+    Filtra por liga_id para mantener consistencia con el contexto.
+    """
+    team_id = _buscar_team_id(sesion, nombre_equipo)
+    if not team_id:
+        return []
+    try:
+        data = fetch_api(
+            sesion,
+            f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/0"
+        )
+    except Exception as e:
+        print(f"[#0p] /team/{team_id}/events falló: {e}")
+        return []
+
+    partidos = []
+    for evento in data.get("events", []):
+        if evento.get("status", {}).get("type", "") != "finished":
+            continue
+        start = evento.get("startTimestamp", 0)
+        if start < cutoff:
+            continue
+        # Filtrar por liga (uniqueTournament.id == liga_id)
+        ut = (evento.get("tournament", {}) or {}).get("uniqueTournament", {}) or {}
+        if ut.get("id") != liga_id:
+            continue
+        partidos.append(evento)
+    partidos.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
+    return partidos[:ultimas_rondas]
+
+
+# Flag por-equipo: True si los partidos fueron obtenidos con MAX_DIAS expandido
+# (>= 180 días). Usado para avisar al usuario que está analizando datos viejos.
+_ULTIMOS_DATOS_VIEJOS: dict[str, bool] = {}
+
+
 def obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, ultimas_rondas=5):
     # ── Cache check ──────────────────────────────────────────────────
     cached = cache_manager.get_partidos_equipo(nombre_equipo, liga_id, temporada_id)
@@ -417,27 +483,60 @@ def obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas
         print(f"[cache] partidos {nombre_equipo} → hit")
         return cached[:ultimas_rondas]
 
-    ahora  = datetime.now().timestamp()
-    cutoff = ahora - MAX_DIAS_HISTORIAL * 86400
-    partidos = []
+    # #0p: usar UTC (consistente con resto del sistema, no depende del OS).
+    ahora = datetime.utcnow().timestamp()
 
-    for ronda in range(rondas_totales + 1, max(0, rondas_totales - ultimas_rondas - 6), -1):
-        data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/"
-                                 f"{liga_id}/season/{temporada_id}/events/round/{ronda}")
-        for evento in data.get("events", []):
-            status = evento.get("status", {}).get("type", "")
-            start  = evento.get("startTimestamp", 0)
-            if status != "finished" or start < cutoff:
+    def _buscar_con_cutoff(dias: int) -> list:
+        cutoff = ahora - dias * 86400
+        partidos: list = []
+        # Estrategia 1: búsqueda por rondas (rápida en ligas grandes).
+        for ronda in range(rondas_totales + 1, max(0, rondas_totales - ultimas_rondas - 6), -1):
+            try:
+                data = fetch_api(
+                    sesion,
+                    f"https://www.sofascore.com/api/v1/unique-tournament/"
+                    f"{liga_id}/season/{temporada_id}/events/round/{ronda}"
+                )
+            except Exception:
                 continue
-            home = evento["homeTeam"]["name"]
-            away = evento["awayTeam"]["name"]
-            if nombre_equipo.lower() in home.lower() or nombre_equipo.lower() in away.lower():
-                partidos.append(evento)
-        if len(partidos) >= ultimas_rondas:
-            break
+            for evento in data.get("events", []):
+                status = evento.get("status", {}).get("type", "")
+                start  = evento.get("startTimestamp", 0)
+                if status != "finished" or start < cutoff:
+                    continue
+                home = evento["homeTeam"]["name"]
+                away = evento["awayTeam"]["name"]
+                if nombre_equipo.lower() in home.lower() or nombre_equipo.lower() in away.lower():
+                    partidos.append(evento)
+            if len(partidos) >= ultimas_rondas:
+                break
+        # Estrategia 2 (fallback): endpoint /team/{id}/events si rondas falló.
+        if not partidos:
+            print(f"[#0p] rondas vacías para '{nombre_equipo}' (cutoff={dias}d) → fallback /team/events")
+            partidos = _partidos_via_endpoint_equipo(
+                sesion, nombre_equipo, liga_id, cutoff, ultimas_rondas
+            )
+        return partidos
+
+    partidos = _buscar_con_cutoff(MAX_DIAS_HISTORIAL)
+    datos_viejos = False
+
+    # #0p: Si no hay nada con ventana default, reintentar con 180 días
+    # (cubre receso de temporada, semestre anterior). Avisar al user.
+    if not partidos:
+        print(f"[#0p] sin partidos en {MAX_DIAS_HISTORIAL}d → reintentar con 180d para '{nombre_equipo}'")
+        partidos = _buscar_con_cutoff(180)
+        if partidos:
+            datos_viejos = True
+            print(f"[#0p] encontrados {len(partidos)} partidos viejos (>{MAX_DIAS_HISTORIAL}d) para '{nombre_equipo}'")
 
     partidos.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
     result = partidos[:ultimas_rondas]
+
+    # Registrar si los datos son viejos (consumido por precomputar_stats_equipo
+    # para insertar aviso en el contexto del LLM).
+    _ULTIMOS_DATOS_VIEJOS[nombre_equipo.lower()] = datos_viejos
+
     if result:
         cache_manager.set_partidos_equipo(nombre_equipo, liga_id, temporada_id, result)
     return result
@@ -661,6 +760,12 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
                 pass
 
     lineas = [f"ESTADÍSTICAS DE {nombre_equipo.upper()} (últimos {len(partidos)} partidos terminados):"]
+    # #0p: aviso cuando los datos son de temporadas anteriores (ventana 180d).
+    if _ULTIMOS_DATOS_VIEJOS.get(nombre_equipo.lower(), False):
+        lineas.append(
+            f"  ⚠️ AVISO: {nombre_equipo} no tiene partidos recientes (últimos {MAX_DIAS_HISTORIAL} días); "
+            f"se están usando datos de hasta 180 días atrás. La plantilla y forma pueden haber cambiado."
+        )
     lineas.append(f"  Partidos: {' | '.join(refs)}")
 
     def _linea_goles(nombre, lista):
@@ -1240,6 +1345,28 @@ def _obtener_fixtures_texto() -> str:
     if user_tz == _SERVER_TZ_AT_LOAD:
         return bruto
     return _retag_fixtures_para_tz(bruto, user_tz)
+
+
+def _system_prompt_con_tz() -> str:
+    """
+    #0m completo: Devuelve SYSTEM_PROMPT con el bloque de fixtures
+    re-tageado según el offset del usuario actual. SYSTEM_PROMPT se
+    guarda en UTC base, pero el LLM debe ver los horarios en la TZ
+    del user. Esta función debe usarse en TODAS las llamadas a Groq.
+    """
+    if not SYSTEM_PROMPT:
+        return SYSTEM_PROMPT
+    user_tz = get_tz_offset_hours()
+    if user_tz == _SERVER_TZ_AT_LOAD:
+        return SYSTEM_PROMPT
+    start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
+    if start == -1:
+        return SYSTEM_PROMPT
+    next_sec = SYSTEM_PROMPT.find("\n===", start + 5)
+    end = next_sec if next_sec != -1 else len(SYSTEM_PROMPT)
+    bloque_utc = SYSTEM_PROMPT[start:end]
+    bloque_tz = _retag_fixtures_para_tz(bloque_utc, user_tz)
+    return SYSTEM_PROMPT[:start] + bloque_tz + SYSTEM_PROMPT[end:]
 
 
 def _buscar_en_fixtures_cargados(nombre_equipo: str) -> list[str]:
@@ -1982,7 +2109,8 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
     session_store.append_message(session_id, "user", mensaje)
 
     contexto_memoria = generar_contexto_memoria()
-    system_completo = SYSTEM_PROMPT
+    # #0m: usar SYSTEM_PROMPT con bloque de fixtures convertido al TZ del user.
+    system_completo = _system_prompt_con_tz()
     if contexto_memoria:
         system_completo += f"\n\n{contexto_memoria}"
 
@@ -2064,7 +2192,8 @@ def chat_con_ia_analisis(prompt_analisis: str, session_id: str, datos_sofascore:
     """Second Groq call for the actual analysis text (after SofaScore data is fetched)."""
     history = session_store.get_history(session_id)
     mensajes = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        # #0m: usar SYSTEM_PROMPT con fixtures en TZ del user.
+        {"role": "system", "content": _system_prompt_con_tz()},
         {"role": "system", "content": f"DATOS REALES PARA EL ANÁLISIS:\n{datos_sofascore}"},
     ] + history + [{"role": "user", "content": prompt_analisis}]
 
