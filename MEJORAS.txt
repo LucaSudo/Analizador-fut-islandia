@@ -5,50 +5,43 @@
 
 ── BUGS CRÍTICOS ──────────────────────────────────────────────
 
-[X] 0. RESUELTO — Bot relanza análisis en lugar de responder contexto.
-       Fix: guard en main.py (post-LLM) — si es_schedule y NOT es_pred y
-       el LLM emitió ACTION:ANALIZAR por inercia de contexto, se descarta
-       la acción y se responde desde los fixtures. "Agregame corners",
-       "sumá tarjetas", etc. siguen relanzando análisis con foco puntual.
+[X] 0e. RESUELTO — Relaunch involuntario de análisis en aclaraciones.
+        Fix: en main.py, post-LLM, si hay análisis previo en la sesión
+        (detectado por '⚽' / 'Total esperado' / 'ACTION:ANALIZAR' en
+        el historial reciente) Y el mensaje del usuario no contiene
+        keywords claros de re-análisis (agregame, sumá, "nuevo análisis",
+        "cuántos goles/corners/tarjetas", combinada, etc.) → se descarta
+        el ACTION:ANALIZAR del LLM y se responde desde el contexto.
 
-[X] 0b. RESUELTO — Bot quedaba mudo con equipos sin fixture.
-        Síntoma real: el LLM emitía ACTION:ANALIZAR con equipo2 vacío y
-        el branch hacía `emit("done")` sin response → frontend perdía el
-        status "Pensando..." sin recibir nada más.
-        Fix: en main.py, cubrir los silent paths de ACTION:ANALIZAR y
-        ACTION:BUSCAR_FIXTURE — siempre se emite un mensaje claro antes
-        del done.
+[X] 0f. RESUELTO — Filtro de liga en consultas de fixtures.
+        Fix: detección por keywords de liga ("islandia", "premier",
+        "francesa", "saudi", "peruana", etc.) mapeadas a nombres
+        oficiales. "Islandia" devuelve Besta deild + 1. deild. La
+        respuesta directa filtra fixtures por bloque de liga y SOLO
+        lista los partidos pedidos (no agrega Perú ni otras ligas).
 
-[X] 0c. RESUELTO — Búsqueda de equipos no validaba el PAR.
-        Fix: cuando el LLM nombra dos equipos, se busca una línea de
-        fixture que contenga AMBOS. Si solo uno aparece, se responde
-        "No encontré X vs Y en los próximos fixtures" en vez de caer
-        a un partido cualquiera del equipo que sí está.
-
-[X] 0d. RESUELTO — Timezone dinámico por request.
-        Fix: el frontend manda `tz_offset_hours` (body) + header
-        `X-Timezone-Offset` (minutos JS) en cada request. En backend se
-        guarda en thread-local (engine.set_request_tz_offset) y se usa en
-        buscar_fixture_equipo + _obtener_fixtures_texto (re-tag de [HOY]
-        y reformat de hora). El default sigue siendo APP_TZ_OFFSET.
+[X] 0g. RESUELTO — Marcar local/visitante (junto con UX #1).
+        Fix: "(L)" y "(V)" en header de análisis, lista de fixtures
+        de hoy, respuestas individuales "El próximo partido de X es:",
+        confirmación "Dale, analizando X (L) vs Y (V)..." y contexto
+        del 1x2 que va al LLM (con nombres explícitos + "(local)" /
+        "(visitante)" en vez de "el local"). Helper idempotente.
 
 ── UX / PRESENTACIÓN ──────────────────────────────────────────
 
-[ ] 1. Indicar el equipo LOCAL en el análisis.
-       Al ser ligas lejanas, el usuario no sabe quién juega de local.
-       Propuesta: marcar el local en el header, ej:
-         "KR Reykjavík (L) vs KA Akureyri"  o  "🏠 KR Reykjavík vs KA Akureyri"
-       Aplica a TODOS los análisis y a la lista de fixtures.
+[X] 1. RESUELTO — junto con #0g (ver arriba).
 
-[ ] 2. Tono de respuestas de fixtures demasiado servil.
-       Al preguntar "qué partidos hay hoy" responde "Te puedo decir que..."
-       (tono sumiso/esclavo). Debería mantener conversación amable y natural
-       pero con seguridad, ej: "Acá están los partidos de hoy:" + lista.
-       No es que NO sea conversacional, es que suena demasiado deferente.
+[X] 2. RESUELTO — Tono servil del LLM.
+       Fix: nueva sección "TONO PROHIBIDO" en el system prompt con
+       lista explícita de frases serviles a evitar ("te puedo decir",
+       "con gusto", "si necesitás algo más no dudes", "espero haber
+       sido de ayuda", etc.) y reglas de "cómo responder en cambio"
+       (directo al grano, sin disculpas, ofrecer ayuda con seguridad).
 
-[ ] 3. Espacio sobrante en la etiqueta de confianza: "(Alta )" → "(Alta)".
-       Hay un espacio antes del paréntesis de cierre. Bug de formato
-       en el armado del texto de líneas.
+[X] 3. RESUELTO — Espacio sobrante "(Alta )".
+       Fix: función _limpiar_formato() en main.py aplicada a toda
+       respuesta del LLM antes de enviarla. Normaliza espacios antes
+       de ")" y después de "(".
 
 ── COMBINADA AUTO ─────────────────────────────────────────────
 

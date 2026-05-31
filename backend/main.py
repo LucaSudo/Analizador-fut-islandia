@@ -85,6 +85,134 @@ class ChatRequest(BaseModel):
 
 # ── Foco label map ───────────────────────────────────────────────────
 
+# Bug #3: el LLM a veces escribe "(Alta )" con espacio sobrante antes
+# de cerrar paréntesis. Limpiamos siempre en post-proceso.
+def _limpiar_formato(texto: str) -> str:
+    if not texto:
+        return texto
+    texto = re.sub(r'\s+\)', ')', texto)   # "(Alta )" → "(Alta)"
+    texto = re.sub(r'\(\s+', '(', texto)   # "( Alta)" → "(Alta)"
+    return texto
+
+
+# Bug #0f: mapa de keywords coloquiales → nombres oficiales de liga
+# tal como aparecen en LIGAS / fixtures. Usamos el primer match.
+_LIGA_KEYWORDS: list[tuple[str, list[str]]] = [
+    # más específicos primero (evitar que "liga 1" matchee "la liga")
+    ("besta deild",        ["Besta deild karla"]),
+    ("primera islandesa",  ["Besta deild karla"]),
+    ("1. deild",           ["1. deild karla"]),
+    ("segunda islandesa",  ["1. deild karla"]),
+    ("islandia",           ["Besta deild karla", "1. deild karla"]),
+    ("islandesa",          ["Besta deild karla", "1. deild karla"]),
+    ("premier league",     ["Premier League"]),
+    ("premier",            ["Premier League"]),
+    ("inglaterra",         ["Premier League"]),
+    ("inglesa",            ["Premier League"]),
+    ("la liga",            ["La Liga"]),
+    ("liga española",      ["La Liga"]),
+    ("española",           ["La Liga"]),
+    ("españa",             ["La Liga"]),
+    ("serie a",            ["Serie A"]),
+    ("italiana",           ["Serie A"]),
+    ("italia",             ["Serie A"]),
+    ("bundesliga",         ["Bundesliga"]),
+    ("alemana",            ["Bundesliga"]),
+    ("alemania",           ["Bundesliga"]),
+    ("ligue 1",            ["Ligue 1"]),
+    ("ligue 2",            ["Ligue 2"]),
+    ("francesa",           ["Ligue 1", "Ligue 2"]),
+    ("francia",            ["Ligue 1", "Ligue 2"]),
+    ("champions league",   ["Champions League"]),
+    ("champions",          ["Champions League"]),
+    ("libertadores",       ["Copa Libertadores"]),
+    ("sudamericana",       ["Copa Sudamericana"]),
+    ("saudi pro",          ["Saudi Pro League"]),
+    ("saudita",            ["Saudi Pro League"]),
+    ("saudi",              ["Saudi Pro League"]),
+    ("árabe",              ["Saudi Pro League"]),
+    ("arabe",              ["Saudi Pro League"]),
+    ("liga 1 peru",        ["Liga 1 Perú"]),
+    ("liga 1 perú",        ["Liga 1 Perú"]),
+    ("liga peruana",       ["Liga 1 Perú"]),
+    ("peruana",            ["Liga 1 Perú"]),
+    ("perú",               ["Liga 1 Perú"]),
+    ("peru",               ["Liga 1 Perú"]),
+    # "liga 1" debe estar después de los que la contienen para no robar matches
+    ("liga 1",             ["Liga 1 Perú"]),
+]
+
+
+# Bug #0e: detecta cuándo el usuario está pidiendo EXPLÍCITAMENTE un
+# nuevo análisis (o agregar una stat puntual al anterior). Si no
+# matchea ninguno y ya hay análisis previo en la sesión → es aclaración.
+_RE_NUEVO_ANALISIS = re.compile(
+    r'\b(?:'
+    r'agregame|agreg[áa]me|agreg[áa]|sum[áa]|sumame|sum[áa]me|'
+    r'a[ñn]ad[íi]|a[ñn]ad[íi]me|a[ñn]adir|'
+    r'analiz[áa] de nuevo|nuevo an[áa]lisis|otro an[áa]lisis|'
+    r'otra vez el an[áa]lisis|volv[éeè] a analizar|'
+    r'de nuevo el an[áa]lisis|reanaliz[áa]|'
+    r'analiz[áa] otro|analiz[áa] el (?:siguiente|otro)|'
+    r'apost(?:ar|emos)|combinada|acumuladora'
+    r')\b|'
+    # foco específico nuevo con verbo de futuro/pregunta
+    r'(?:cu[aá]nt[oa]s|hab[rr][áa]|va\s+a\s+haber|hay)\s+'
+    r'(?:corners?|tarjetas?|goles?|remates?|faltas?|amarillas?|rojas?)',
+    re.IGNORECASE,
+)
+
+
+def _es_pedido_nuevo_analisis(msg: str) -> bool:
+    return bool(_RE_NUEVO_ANALISIS.search(msg or ""))
+
+
+def _hay_analisis_previo(history: list) -> bool:
+    """True si en los últimos N mensajes del assistant hay un análisis
+    (detectado por header con ⚽ o por 'Total esperado' textual)."""
+    for m in reversed(history[-12:]):
+        if m.get("role") != "assistant":
+            continue
+        c = m.get("content", "")
+        if "⚽" in c or "Total esperado" in c or "ACTION:ANALIZAR|" in c:
+            return True
+    return False
+
+
+def _detectar_liga_filtro(msg: str) -> list[str]:
+    """Devuelve la lista de nombres de liga oficiales si el mensaje
+    referencia una liga, o [] si no detecta ninguna."""
+    m = msg.lower()
+    for kw, ligas in _LIGA_KEYWORDS:
+        if kw in m:
+            return ligas
+    return []
+
+
+# Bug #0g/#1: marcar local/visitante en cualquier línea de fixture.
+# Soporta los dos formatos que generamos:
+#   "TeamA vs TeamB (fecha hora)"     (fixtures cargados)
+#   "TeamA vs TeamB — torneo — fecha" (buscar_fixture_equipo)
+# Idempotente: no agrega si ya están las marcas.
+def _marcar_local_visitante(linea: str) -> str:
+    if "(L)" in linea or "(V)" in linea:
+        return linea
+    # Caso "TeamA vs TeamB (..." → inserta antes de "(".
+    nueva = re.sub(
+        r'^(\s*-?\s*)([^\n(]+?)\s+vs\s+([^\n(]+?)(\s+\()',
+        r'\1\2 (L) vs \3 (V)\4',
+        linea, count=1,
+    )
+    if nueva != linea:
+        return nueva
+    # Caso "TeamA vs TeamB — torneo — fecha" → inserta antes de " — ".
+    return re.sub(
+        r'^(\s*-?\s*)([^\n—]+?)\s+vs\s+([^\n—]+?)(\s+—)',
+        r'\1\2 (L) vs \3 (V)\4',
+        linea, count=1,
+    )
+
+
 _FOCO_LABEL = {
     "corners": "Corners", "corners_1h": "Corners 1T", "corners_2h": "Corners 2T",
     "goles": "Goles", "tarjetas_amarillas": "Tarjetas amarillas",
@@ -143,19 +271,57 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             # ── Consulta genérica: listar todos los partidos del día directamente ──
             if not equipo and engine._es_consulta_todos_partidos(message):
                 fixtures_txt = engine._obtener_fixtures_texto()
+                liga_filtro = _detectar_liga_filtro(message)  # Bug #0f
+
                 if fixtures_txt:
-                    # Extraer solo los partidos de HOY de los fixtures cargados
-                    lineas_hoy = [
-                        l.strip() for l in fixtures_txt.splitlines()
-                        if "[HOY]" in l or "[EN CURSO]" in l
-                    ]
-                    if lineas_hoy:
-                        texto = "Partidos de hoy:\n" + "\n".join(
-                            "• " + re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', l).strip()
-                            for l in lineas_hoy
-                        )
+                    # Si se detectó liga, filtrar fixtures por bloque de liga.
+                    # El texto tiene cabeceras tipo "Premier League:" antes de
+                    # las líneas "  - TeamA vs TeamB (fecha)".
+                    if liga_filtro:
+                        lineas_filtradas = []
+                        liga_actual = ""
+                        for l in fixtures_txt.splitlines():
+                            ls = l.strip()
+                            if ls.endswith(":") and " vs " not in ls and "===" not in ls:
+                                liga_actual = ls[:-1].strip()
+                                continue
+                            if liga_actual in liga_filtro and " vs " in ls:
+                                lineas_filtradas.append(l)
+                        lineas_hoy = [
+                            l.strip() for l in lineas_filtradas
+                            if "[HOY]" in l or "[EN CURSO]" in l
+                        ]
+                        nombre_liga_pretty = " / ".join(liga_filtro)
+                        if lineas_hoy:
+                            texto = f"Acá están los partidos de hoy en {nombre_liga_pretty}:\n" + "\n".join(
+                                "• " + _marcar_local_visitante(
+                                    re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', l).strip()
+                                )
+                                for l in lineas_hoy
+                            )
+                        elif lineas_filtradas:
+                            # Hay partidos pero no [HOY] → mostrar próximos
+                            texto = f"No hay partidos de {nombre_liga_pretty} hoy. Próximos:\n" + "\n".join(
+                                "• " + _marcar_local_visitante(l.strip())
+                                for l in lineas_filtradas[:10]
+                            )
+                        else:
+                            texto = f"No tengo partidos de {nombre_liga_pretty} cargados."
                     else:
-                        texto = "No encontré partidos programados para hoy en las ligas que sigo."
+                        # Sin filtro: todos los [HOY] de todas las ligas
+                        lineas_hoy = [
+                            l.strip() for l in fixtures_txt.splitlines()
+                            if "[HOY]" in l or "[EN CURSO]" in l
+                        ]
+                        if lineas_hoy:
+                            texto = "Acá están los partidos de hoy:\n" + "\n".join(
+                                "• " + _marcar_local_visitante(
+                                    re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', '', l).strip()
+                                )
+                                for l in lineas_hoy
+                            )
+                        else:
+                            texto = "No encontré partidos programados para hoy en las ligas que sigo."
                 else:
                     texto = "Los fixtures aún se están cargando, intentá en un momento."
                 session_store.append_message(session_id, "user", message)
@@ -178,7 +344,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     f_limpio = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
                     sufijo   = " (hoy)"       if es_hoy   else ""
                     sufijo  += " — en curso"  if en_curso else ""
-                    texto = f"El próximo partido de {equipo} es:\n• {f_limpio}{sufijo}"
+                    texto = f"El próximo partido de {equipo} es:\n• {_marcar_local_visitante(f_limpio)}{sufijo}"
                     session_store.append_message(session_id, "assistant", texto)
                     emit("response", {"type": "fixture", "content": texto})
                     emit("done", {})
@@ -204,6 +370,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             forzar_fixtures=es_schedule and not es_pred,
         )
         respuesta = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', respuesta).strip()
+        respuesta = _limpiar_formato(respuesta)
 
         # ── ACTION:BUSCAR_FIXTURE ─────────────────────────────────────
         if "ACTION:BUSCAR_FIXTURE|" in respuesta:
@@ -221,7 +388,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     f_limpio = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', f).strip()
                     sufijo   = " (hoy)"       if es_hoy   else ""
                     sufijo  += " — en curso"  if en_curso else ""
-                    texto = f"El próximo partido de {equipo} es:\n• {f_limpio}{sufijo}"
+                    texto = f"El próximo partido de {equipo} es:\n• {_marcar_local_visitante(f_limpio)}{sufijo}"
                 else:
                     texto = f"No encontré próximos partidos de {equipo} en SofaScore."
                 session_store.replace_last_assistant(session_id, texto)
@@ -250,6 +417,24 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     limpia = "Estos son los próximos partidos:\n\n" + "\n".join(lineas)
                 else:
                     limpia = "No tengo fixtures cargados en este momento."
+            session_store.replace_last_assistant(session_id, limpia)
+            emit("response", {"type": "chat", "content": limpia})
+            emit("done", {})
+            return
+
+        # ── Guard: si hay análisis previo y el user NO pidió uno nuevo,
+        # descartar ACTION:ANALIZAR del LLM (#0e). Cubre el caso típico
+        # "en el análisis hablaste de equipo local pero no aclaraste cuál"
+        # — el LLM responde con ACTION:ANALIZAR por inercia de contexto.
+        if ("ACTION:ANALIZAR|" in respuesta
+                and _hay_analisis_previo(history)
+                and not _es_pedido_nuevo_analisis(message)):
+            limpia = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', respuesta).strip()
+            limpia = _limpiar_formato(limpia)
+            if not limpia or len(limpia) < 15:
+                limpia = ("Eso lo cubrí en el análisis de arriba. Si querés "
+                          "sumar otro mercado (corners, tarjetas, goles, etc.) "
+                          "decime cuál y lo agrego.")
             session_store.replace_last_assistant(session_id, limpia)
             emit("response", {"type": "chat", "content": limpia})
             emit("done", {})
@@ -471,7 +656,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
 
                 # Confirmar de forma natural qué partido se va a analizar
                 sufijo = " — partido de hoy" if es_hoy_fix else ""
-                msg_confirm = (f"Dale, analizando {equipo1} vs {equipo2} "
+                msg_confirm = (f"Dale, analizando {equipo1} (L) vs {equipo2} (V) "
                                f"({liga_nombre}{sufijo}). Un momento...")
                 session_store.replace_last_assistant(session_id, msg_confirm)
                 emit("response", {"type": "chat", "content": msg_confirm})
@@ -577,9 +762,10 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
 
             analisis = engine.chat_con_ia_analisis(prompt_analisis, session_id, datos)
             analisis_limpio = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', analisis).strip()
+            analisis_limpio = _limpiar_formato(analisis_limpio)
 
             foco_label = _FOCO_LABEL.get(foco_lower, foco)
-            header = f"⚽ {equipo1} vs {equipo2}"
+            header = f"⚽ {equipo1} (L) vs {equipo2} (V)"
             if liga_nombre: header += f"  •  {liga_nombre}"
             if info_ronda:  header += f"  •  {info_ronda}"
             header += f"\n📌 Foco: {foco_label}\n"

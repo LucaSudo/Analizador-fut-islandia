@@ -496,10 +496,17 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         conf_1x2 = ("Alta 🟢"  if max_res[1] >= 0.50 else
                     "Media 🟡" if max_res[1] >= 0.35 else
                     "Baja 🔴")
+        # Bug #0g: nombres explícitos en el ctx del LLM, no "el local".
+        nombre_max = (equipo1 if max_res[0].startswith("1") else
+                      equipo2 if max_res[0].startswith("2") else "Empate")
+        rec_label  = (f"{equipo1} (local)"     if max_res[0].startswith("1") else
+                      f"{equipo2} (visitante)" if max_res[0].startswith("2") else
+                      "empate")
         lineas_ctx.insert(0, (
-            f"  1x2: local {p_loc*100:.0f}% | empate {p_emp*100:.0f}% | visitante {p_vis*100:.0f}%"
+            f"  1x2: {equipo1} (local) {p_loc*100:.0f}% | empate {p_emp*100:.0f}% | "
+            f"{equipo2} (visitante) {p_vis*100:.0f}%"
             f" | xG: {equipo1}={xg1:.2f} / {equipo2}={xg2:.2f}"
-            f" | RECOMENDACIÓN = {max_res[0]} (confianza: {conf_1x2})"
+            f" | RECOMENDACIÓN = {rec_label} (confianza: {conf_1x2})"
         ))
 
     contexto = (
@@ -1039,6 +1046,25 @@ TONO:
 - Nunca sonas a robot. Nunca sonas a informe de consultoría.
 - Para preguntas simples (horarios, curiosidades, datos): respondés en 1-3 oraciones. No inflés la respuesta.
 
+TONO PROHIBIDO — NUNCA uses estas frases ni variantes (suenan serviles):
+- "Te puedo decir que..." / "Te comento que..." / "Te informo que..."
+- "Con gusto..." / "Por supuesto..." / "Claro que sí..."
+- "Si necesitás algo más, no dudes en preguntar"
+- "Estoy aquí para ayudarte" / "Es un placer ayudarte"
+- "Espero haber sido de ayuda" / "Espero haber respondido tu pregunta"
+- "¿Hay algo más en lo que pueda ayudarte?"
+- "Déjame saber si..." / "Avisame si necesitás algo más"
+- "Me alegra haber podido proporcionarte..."
+- Frases de cierre tipo: "¡Saludos!" / "¡Espero que te sirva!"
+
+CÓMO RESPONDER EN CAMBIO:
+- Si tenés los datos → vas directo al grano: "Acá están los partidos de hoy:" + lista. NO inflar.
+- Si NO tenés los datos → decilo claro: "No tengo eso cargado" o "No lo veo en mis fixtures". Sin disculparte.
+- Podés ofrecer ayuda relacionada, pero con seguridad, no servilismo:
+    SÍ: "Si querés que analice alguno, decime cuál."
+    NO: "¿Te gustaría que analice alguno? Estaré encantado de hacerlo."
+- Las ofertas de seguir conversando van como una línea casual al final, no como un cierre formal.
+
 FORMATO:
 - Siempre dejás UNA LÍNEA EN BLANCO entre párrafos o secciones distintas.
 - Si listás 3 o más cosas, usás viñetas (–) o números. Nunca una lista en línea separada por comas.
@@ -1372,8 +1398,10 @@ _FOCO_PROMPT = {
     "completo": (
         "Analizá el partido cubriendo estos mercados en orden (un párrafo por mercado, sin listas). "
         "SIN copiar nombres técnicos del contexto ('1x2', 'btts', 'LÍNEAS PRE-CALCULADAS', etc.).\n\n"
-        "RESULTADO: Porcentajes local/empate/visitante del campo '1x2'. "
-        "Mencioná SIEMPRE los tres. Integrá la confianza en la misma oración.\n\n"
+        "RESULTADO: Porcentajes del campo '1x2'. SIEMPRE usá los NOMBRES de los equipos seguidos de '(local)' "
+        "o '(visitante)', NUNCA digas solo 'el local' o 'el visitante' sin el nombre. Ej: "
+        "'KR Reykjavík (local) tiene 50%, empate 20%, KA Akureyri (visitante) 30%'. "
+        "Mencioná SIEMPRE los tres porcentajes. Integrá la confianza en la misma oración.\n\n"
         "AMBOS ANOTAN: Probabilidad del campo 'btts'. Si <50% → recomendación 'No'. "
         "Mencioná el porcentaje y la confianza.\n\n"
         "GOLES: Promedios anotados/recibidos de cada equipo. "
