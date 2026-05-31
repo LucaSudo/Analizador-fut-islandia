@@ -129,16 +129,18 @@ def get_fixtures_texto() -> str | None:
     return None
 
 
-def set_fixtures_texto(texto: str):
-    """Guarda el texto de fixtures en Supabase con TTL de 2 horas."""
+def set_fixtures_texto(texto: str) -> bool:
+    """Guarda el texto de fixtures en Supabase con TTL de 2 horas. Retorna True si OK."""
     try:
         db.table("partidos_equipo_cache").upsert({
             "id":         _FIXTURES_CACHE_KEY,
             "partidos":   texto,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
+        return True
     except Exception as e:
         print(f"⚠️  Cache write error (fixtures): {e}")
+        return False
 
 
 # ── Dict de ligas (IDs, temporadas, rondas) ──────────────────────────
@@ -168,13 +170,15 @@ def get_ligas() -> dict | None:
     return None
 
 
-def set_ligas(ligas: dict):
-    """Guarda el dict LIGAS en Supabase con TTL de 24 horas."""
+def set_ligas(ligas: dict) -> bool:
+    """Guarda el dict LIGAS en Supabase con TTL de 24 horas. Retorna True si OK."""
     try:
         db.table("partidos_equipo_cache").upsert({
             "id":         _LIGAS_CACHE_KEY,
             "partidos":   ligas,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
+        return True
     except Exception as e:
         print(f"⚠️  Cache write error (ligas): {e}")
+        return False

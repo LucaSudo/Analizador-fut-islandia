@@ -90,8 +90,8 @@ def obtener_temporadas_actuales(sesion, forzar_refresh: bool = False):
             pass
     LIGAS = ligas
     if _cm is not None and ligas:
-        _cm.set_ligas(ligas)
-        print("[cache] LIGAS → guardado en Supabase (TTL 24h)")
+        if _cm.set_ligas(ligas):
+            print("[cache] LIGAS → guardado en Supabase (TTL 24h)")
     return ligas
 
 def cargar_proximos_partidos(forzar_refresh: bool = False):
@@ -195,7 +195,7 @@ def cargar_proximos_partidos(forzar_refresh: bool = False):
 
     # ── Guardar en caché para los próximos cold starts ───────────────
     if _cm is not None:
-        _cm.set_fixtures_texto(contexto)
-        print("[cache] fixtures → guardado en Supabase (TTL 2h)")
+        if _cm.set_fixtures_texto(contexto):
+            print("[cache] fixtures → guardado en Supabase (TTL 2h)")
 
     return contexto
