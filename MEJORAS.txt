@@ -414,6 +414,109 @@
         luego nombres oficiales.
 
 ═══════════════════════════════════════════════════════════════
+  BUGS CRÍTICOS PENDIENTES
+═══════════════════════════════════════════════════════════════
+
+[X] 0q. RESUELTO — Combinada AUTO propone partidos que ya se jugaron.
+
+        SÍNTOMA (reportado por usuario):
+          ScoutAI genera una combinada con partidos ya jugados.
+          Al señalarlo, vuelve a generar la MISMA combinada incorrecta.
+
+        CAUSA RAÍZ (doble problema):
+
+        1. _parsear_partidos_fixtures() (engine.py línea 1276) NO filtra
+           por tiempo actual. Lee el SYSTEM_PROMPT cacheado y solo marca
+           prioridad si la línea contiene [HOY] o [EN CURSO]. Nunca compara
+           la fecha/hora del fixture contra datetime.utcnow(). Resultado:
+           un partido que era futuro al arrancar (ej: Valur vs Víkingur
+           01/06 a las 14:00 UTC) aparece como candidato válido aunque
+           ya hayan pasado horas desde que terminó.
+
+        2. SYSTEM_PROMPT es estático desde inicializar(). Una vez cargado
+           al arranque, los fixtures no se refrescan a menos que el backend
+           se reinicie. Si el servidor lleva horas corriendo, los partidos
+           "programados" al inicio ahora son historia — pero el cache no
+           lo sabe.
+
+        3. Cuando el usuario reporta el error, el LLM vuelve a disparar
+           ACTION:COMBINADA_AUTO sin forzar refresh. hacer_combinada_auto()
+           lee el mismo SYSTEM_PROMPT → devuelve los mismos partidos
+           jugados → bucle infinito del error.
+
+        PARTIDOS AFECTADOS EN EL REPORTE:
+          - Valur Reykjavík vs Víkingur Reykjavík (Besta deild karla)
+          - Los Chankas CYC vs Universidad Técnica de Cajamarca (Liga 1 Perú)
+          Ambos ya jugados al momento de la consulta.
+
+        FLUJO DEL BUG (paso a paso):
+          1. Backend arranca → inicializar() carga fixtures de hoy+próximos
+          2. SYSTEM_PROMPT contiene líneas con "(01/06/2026 14:00 [HOY])"
+          3. Horas después, el user pide "armame una combinada"
+          4. hacer_combinada_auto() llama _parsear_partidos_fixtures()
+          5. _parsear_partidos_fixtures() itera SYSTEM_PROMPT: ve [HOY] →
+             marca es_prio=True y lo incluye SIN verificar si 14:00 < ahora
+          6. Se generan picks para partidos terminados → output incorrecto
+          7. User dice "esos partidos ya pasaron"
+          8. LLM dispara ACTION:COMBINADA_AUTO nuevamente
+          9. Mismo SYSTEM_PROMPT cacheado → mismos partidos → mismo error
+
+        SOLUCIÓN REQUERIDA:
+
+        FIX 1 — Filtro temporal en _parsear_partidos_fixtures() (mínimo):
+          Parsear la fecha "(DD/MM/YYYY HH:MM" de cada línea de fixture.
+          Convertir a UTC (revertir offset del user = _SERVER_TZ_AT_LOAD).
+          Si ts_partido < datetime.utcnow() → skip (partido ya pasó).
+
+          Implementación mínima (sin re-fetch):
+          ```python
+          m_fecha = re.search(r'\((\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})', linea)
+          if m_fecha:
+              try:
+                  dt_local = datetime.strptime(
+                      f"{m_fecha.group(1)} {m_fecha.group(2)}", "%d/%m/%Y %H:%M"
+                  )
+                  # El SYSTEM_PROMPT usa TZ del servidor (= UTC, post #0m)
+                  if dt_local < datetime.utcnow():
+                      continue  # partido ya pasó, saltar
+              except ValueError:
+                  pass
+          ```
+
+        FIX 2 — Refresh periódico de SYSTEM_PROMPT (robusto):
+          Guardar timestamp de carga en _FIXTURES_LOADED_AT.
+          Si han pasado más de N minutos (ej: 90 min), llamar
+          inicializar() async antes de responder una combinada.
+          Esto garantiza que los fixtures estén siempre actualizados.
+
+        FIX 3 — Mensaje de error útil cuando no quedan partidos:
+          Si después de filtrar no quedan candidatos válidos para la
+          combinada → no reintentar con los mismos datos, sino informar
+          al user: "No quedan partidos de hoy sin jugar. ¿Querés que
+          busque partidos de mañana?"
+
+        IMPACTO:
+          - Usuario apuesta en partidos que ya se jugaron → pérdida directa
+          - Falla silenciosa: el sistema reporta confianza "Muy alta 🟢"
+            en un partido cuyo resultado ya es conocido
+          - Repetir el error al ser señalado destruye confianza en la tool
+
+        PRIORIDAD: CRÍTICA — afecta directamente las apuestas del usuario.
+
+        FIX APLICADO (engine.py):
+          1. _parsear_partidos_fixtures() (línea 1276): agrega filtro temporal.
+             Para cada fixture, parsea "(DD/MM/YYYY HH:MM" y si
+             dt_partido < datetime.utcnow() → skip.
+             Excepción: [EN CURSO] siempre pasa (partido en juego, no terminado).
+          2. hacer_combinada_auto(): cuando _parsear_partidos_fixtures() devuelve
+             vacío, detecta si SYSTEM_PROMPT tenía fixtures cargados (busca " vs "
+             en el bloque). Si sí → flag todos_jugados=True en debug_info.
+          3. _formatear_combinada(): cuando n_liga==0 y todos_jugados=True →
+             mensaje claro: "Los partidos que tenía cargados ya se jugaron.
+             ¿Querés picks para mañana o de otra liga?" en lugar de mensaje
+             genérico de "no hay fixtures".
+
+═══════════════════════════════════════════════════════════════
   PENDIENTES CONOCIDOS (de sesiones previas)
 ═══════════════════════════════════════════════════════════════
 

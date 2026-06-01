@@ -1279,6 +1279,7 @@ def _parsear_partidos_fixtures() -> list[tuple]:
     next_sec = SYSTEM_PROMPT.find("\n===", start + 5)
     fixtures_txt = SYSTEM_PROMPT[start:next_sec] if next_sec != -1 else SYSTEM_PROMPT[start:]
 
+    ahora_utc = datetime.utcnow()
     resultados = []; liga_actual = ""
     for linea in fixtures_txt.splitlines():
         ls = linea.strip()
@@ -1288,6 +1289,20 @@ def _parsear_partidos_fixtures() -> list[tuple]:
             continue
         m = re.search(r'-\s+(.+?)\s+vs\s+(.+?)\s+\(', linea)
         if m and liga_actual:
+            # #0q: Filtrar partidos que ya pasaron. El SYSTEM_PROMPT usa UTC
+            # (post #0m) → comparar directo contra utcnow().
+            # Los [EN CURSO] siempre se incluyen (partido empezado pero no terminado).
+            if "[EN CURSO]" not in linea:
+                mf = re.search(r'\((\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})', linea)
+                if mf:
+                    try:
+                        dt_partido = datetime.strptime(
+                            f"{mf.group(1)} {mf.group(2)}", "%d/%m/%Y %H:%M"
+                        )
+                        if dt_partido < ahora_utc:
+                            continue  # partido ya pasó
+                    except ValueError:
+                        pass
             home = m.group(1).strip(); away = m.group(2).strip()
             es_prio = "[HOY]" in linea or "[EN CURSO]" in linea
             resultados.append((home, away, liga_actual, es_prio))
@@ -1435,7 +1450,13 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
 def hacer_combinada_auto(n_picks: int = 2, progress_cb=None, liga_filtro: str = "") -> tuple[list[dict], dict]:
     partidos = _parsear_partidos_fixtures()
     if not partidos:
-        return [], {"n_liga": 0, "n_analizados": 0, "partidos": []}
+        # #0q: distinguir "sin fixtures cargados" de "todos los fixtures ya pasaron".
+        # _parsear_partidos_fixtures filtra temporalmente — si SYSTEM_PROMPT tiene
+        # líneas con " vs " en el bloque de partidos, es que ya jugaron.
+        _start = SYSTEM_PROMPT.find("=== PRÓXIMOS PARTIDOS")
+        _tiene_fixtures_cargados = _start != -1 and " vs " in SYSTEM_PROMPT[_start:]
+        return [], {"n_liga": 0, "n_analizados": 0, "partidos": [],
+                    "todos_jugados": _tiene_fixtures_cargados}
 
     # #0k: ligas pedidas (multi-liga separadas por coma, ej:
     # "Premier League,Besta deild karla") + tracking de cuáles
@@ -1563,6 +1584,11 @@ def _formatear_combinada(picks: list[dict], liga_filtro: str = "", debug_info: d
                     "Ligas disponibles: " + ", ".join(sorted(LIGAS.keys())) + ".")
 
         if n_liga == 0:
+            # #0q: mensaje diferenciado según si los fixtures ya pasaron o no se cargaron.
+            if info.get("todos_jugados"):
+                return ("Los partidos que tenía cargados ya se jugaron. "
+                        "No quedan partidos pendientes para hoy. "
+                        "¿Querés que busque picks para partidos de mañana o de otra liga?")
             return (f"No hay partidos{liga_msg} cargados en los fixtures. "
                     "Puede que la liga no tenga partidos próximos o que no se hayan podido cargar al arrancar.")
         elif n_anal > 0:
