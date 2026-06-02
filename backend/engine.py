@@ -504,8 +504,10 @@ def obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas
                 start  = evento.get("startTimestamp", 0)
                 if status != "finished" or start < cutoff:
                     continue
-                home = evento["homeTeam"]["name"]
-                away = evento["awayTeam"]["name"]
+                home = evento.get("homeTeam", {}).get("name", "")
+                away = evento.get("awayTeam", {}).get("name", "")
+                if not home or not away:
+                    continue
                 if nombre_equipo.lower() in home.lower() or nombre_equipo.lower() in away.lower():
                     partidos.append(evento)
             if len(partidos) >= ultimas_rondas:
@@ -822,7 +824,7 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
             "LÍNEAS DE APUESTA PRE-CALCULADAS POR PYTHON:\n"
             "  (sin datos suficientes)\n"
         )
-        return ctx_vacio, None, "", {"id": -1, "temporada": -1, "rondas": 0}
+        return ctx_vacio, None, "", {"id": -1, "temporada": -1, "rondas": 0}, {}, {}, {}
 
     # #0i: normalizar al nombre oficial para que el resto de la función
     # y el header del análisis muestren la liga correcta aunque el LLM
@@ -1302,7 +1304,7 @@ def _parsear_partidos_fixtures() -> list[tuple]:
                         if dt_partido < ahora_utc:
                             continue  # partido ya pasó
                     except ValueError:
-                        pass
+                        continue  # fecha malformada → excluir por precaución
             home = m.group(1).strip(); away = m.group(2).strip()
             es_prio = "[HOY]" in linea or "[EN CURSO]" in linea
             resultados.append((home, away, liga_actual, es_prio))
@@ -1628,7 +1630,7 @@ def _formatear_combinada(picks: list[dict], liga_filtro: str = "", debug_info: d
     return "\n".join(lineas)
 
 
-def _guardar_picks_combinada(picks: list[dict]) -> None:
+def _guardar_picks_combinada(picks: list[dict], user_id: str = "default") -> None:
     for pick in picks:
         stat_nombre = _STAT_NOMBRE_ES.get(pick["stat"], pick["stat"])
         pred_texto = (f"[Combinada] Recomendación: {pick['linea_segura']} {stat_nombre}. "
@@ -1640,6 +1642,7 @@ def _guardar_picks_combinada(picks: list[dict]) -> None:
             prediccion=pred_texto, evento_id=None,
             liga_id=liga_info["id"] if liga_info else None,
             temporada_id=liga_info["temporada"] if liga_info else None,
+            user_id=user_id,
         )
 
 
@@ -2130,11 +2133,11 @@ _FOCO_PROMPT = {
 
 def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
                 forzar_action: bool = False, es_confirmacion_partido: bool = False,
-                forzar_fixtures: bool = False) -> str:
+                forzar_fixtures: bool = False, user_id: str = None) -> str:
     history = session_store.get_history(session_id)
     session_store.append_message(session_id, "user", mensaje)
 
-    contexto_memoria = generar_contexto_memoria()
+    contexto_memoria = generar_contexto_memoria(user_id)
     # #0m: usar SYSTEM_PROMPT con bloque de fixtures convertido al TZ del user.
     system_completo = _system_prompt_con_tz()
     if contexto_memoria:

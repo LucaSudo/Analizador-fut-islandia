@@ -345,6 +345,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             forzar_action=es_pred,
             es_confirmacion_partido=es_confirmacion,
             forzar_fixtures=es_schedule and not es_pred,
+            user_id=user_id,
         )
         respuesta = re.sub(r'\s*\[HOY\]\s*|\s*\[EN CURSO\]\s*', ' ', respuesta).strip()
         respuesta = _limpiar_formato(respuesta)
@@ -454,7 +455,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             )
             texto = engine._formatear_combinada(picks, liga_filtro=liga_filtro, debug_info=debug_info)
             if picks:
-                engine._guardar_picks_combinada(picks)
+                engine._guardar_picks_combinada(picks, user_id=user_id)
             session_store.replace_last_assistant(session_id, texto)
             emit("response", {"type": "combinada", "content": texto, "picks": picks})
             emit("done", {})
@@ -488,7 +489,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     picks = engine.hacer_combinada_especifica(partidos_picks)
                     texto = engine._formatear_combinada(picks)
                     if picks:
-                        engine._guardar_picks_combinada(picks)
+                        engine._guardar_picks_combinada(picks, user_id=user_id)
                     session_store.replace_last_assistant(session_id, texto)
                     emit("response", {"type": "combinada", "content": texto, "picks": picks})
                     emit("done", {})

@@ -19,20 +19,26 @@ from supabase_client import db
 # Helpers internos
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _predicciones() -> list:
-    """Trae todas las predicciones ordenadas por fecha de creación."""
+def _predicciones(user_id: str = None) -> list:
+    """Trae predicciones ordenadas por fecha. Si user_id se provee, filtra por usuario."""
     try:
-        res = db.table("predicciones").select("*").order("created_at").execute()
+        q = db.table("predicciones").select("*").order("created_at")
+        if user_id is not None:
+            q = q.eq("user_id", user_id)
+        res = q.execute()
         return res.data or []
     except Exception as e:
         print(f"⚠️  Supabase error (predicciones): {e}")
         return []
 
 
-def _notas_equipos() -> dict:
-    """Trae todas las notas de equipos agrupadas por equipo."""
+def _notas_equipos(user_id: str = None) -> dict:
+    """Trae notas de equipos agrupadas por equipo. Si user_id se provee, filtra por usuario."""
     try:
-        res = db.table("notas_equipos").select("*").order("created_at").execute()
+        q = db.table("notas_equipos").select("*").order("created_at")
+        if user_id is not None:
+            q = q.eq("user_id", user_id)
+        res = q.execute()
         agrupadas: dict = {}
         for row in (res.data or []):
             eq = row["equipo"]
@@ -47,13 +53,13 @@ def _notas_equipos() -> dict:
 # Compatibilidad legacy: cargar_memoria()
 # ─────────────────────────────────────────────────────────────────────────────
 
-def cargar_memoria() -> dict:
+def cargar_memoria(user_id: str = None) -> dict:
     """
     Devuelve la estructura legacy {predicciones, notas_equipos, conversaciones_destacadas}
     para código que la usa directamente.
     """
-    preds = _predicciones()
-    notas = _notas_equipos()
+    preds = _predicciones(user_id)
+    notas = _notas_equipos(user_id)
     return {
         "predicciones":              preds,
         "notas_equipos":             notas,
@@ -454,9 +460,9 @@ def verificar_predicciones(sesion):
 # Contexto de memoria para el system prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generar_contexto_memoria() -> str:
-    preds = _predicciones()
-    notas = _notas_equipos()
+def generar_contexto_memoria(user_id: str = None) -> str:
+    preds = _predicciones(user_id)
+    notas = _notas_equipos(user_id)
     contexto = ""
 
     if not preds:
