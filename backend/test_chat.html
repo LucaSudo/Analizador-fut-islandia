@@ -193,8 +193,159 @@
     </div>
   </section>
 
-<!-- Features, Pricing, CTA y Footer se agregan en Task 3 -->
-</div><!-- /#landing — CIERRE TEMPORAL -->
+  <!-- Features -->
+  <section class="py-24 bg-surface-container-lowest relative overflow-hidden">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="text-center mb-16">
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Potenciá tus decisiones</h2>
+        <p class="text-on-surface-variant max-w-xl mx-auto font-body-md">
+          Algoritmos de procesamiento de lenguaje natural y modelos estadísticos avanzados para darte una ventaja competitiva única.
+        </p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-primary text-3xl">database</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">Datos reales de SofaScore</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Acceso en tiempo real a estadísticas precisas de más de 10 ligas: Premier League, La Liga, Champions League, Copa Libertadores y más.
+          </p>
+        </div>
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-neon-accent/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-neon-accent text-3xl">psychology</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">IA avanzada</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Análisis con LLaMA 3.3 70B sobre corners, goles, tarjetas y remates. Los cálculos se hacen en Python para máxima precisión.
+          </p>
+        </div>
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-primary-container/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-primary-container text-3xl">auto_awesome_motion</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">Combinadas automáticas</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Pedí la mejor combinada del día y la IA selecciona los picks con mayor confianza estadística entre todos los partidos disponibles.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="py-24 relative">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="text-center mb-16">
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Planes diseñados para vos</h2>
+        <p class="text-on-surface-variant font-body-md">Desde analistas ocasionales hasta profesionales de la industria.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <!-- Gratuito -->
+        <div class="glass-card p-10 rounded-3xl border border-glass-border flex flex-col">
+          <div class="mb-8">
+            <span class="font-label-caps text-label-caps bg-surface-variant px-3 py-1 rounded-full text-on-surface-variant">PLAN ACTUAL</span>
+            <h3 class="font-headline-lg text-3xl mt-4 mb-2">Gratuito</h3>
+            <div class="flex items-baseline gap-1">
+              <span class="text-4xl font-display-lg font-bold">$0</span>
+              <span class="text-on-surface-variant">/mes</span>
+            </div>
+          </div>
+          <ul class="space-y-4 mb-10 flex-grow">
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">2 análisis por día</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">1 combinada por día</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">Acceso a todas las ligas</span>
+            </li>
+          </ul>
+          <button class="w-full py-4 rounded-xl border border-primary text-primary font-bold hover:bg-primary/10 transition-all"
+                  onclick="openAuth('register')">Empezar ahora</button>
+        </div>
+        <!-- Pro -->
+        <div class="relative rounded-3xl p-[1px] overflow-hidden shadow-2xl"
+             style="background: linear-gradient(135deg, #a4e6ff, #00FFC2)">
+          <div class="bg-background/90 backdrop-blur-xl p-10 h-full w-full rounded-[23px] flex flex-col">
+            <div class="absolute top-6 right-6">
+              <span class="bg-primary/20 text-primary font-label-caps text-[10px] px-3 py-1 rounded-full animate-pulse">PRÓXIMAMENTE</span>
+            </div>
+            <div class="mb-8">
+              <span class="font-label-caps text-label-caps bg-primary/20 px-3 py-1 rounded-full text-primary">ELITE ACCESS</span>
+              <h3 class="font-headline-lg text-3xl mt-4 mb-2">Pro</h3>
+              <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-display-lg font-bold">Pro</span>
+                <span class="text-on-surface-variant italic">Waitlist Open</span>
+              </div>
+            </div>
+            <ul class="space-y-4 mb-10 flex-grow">
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Análisis ilimitados</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Combinadas ilimitadas</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Acceso a todas las ligas</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Soporte prioritario 24/7</span>
+              </li>
+            </ul>
+            <button class="w-full py-4 rounded-xl bg-primary text-on-primary font-bold glow-button opacity-60 cursor-not-allowed" disabled>
+              Muy pronto
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-24">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="glass-card p-12 md:p-20 rounded-[40px] border border-glass-border text-center relative overflow-hidden"
+           style="background: linear-gradient(135deg, rgba(164,230,255,0.1), transparent)">
+        <div class="absolute -bottom-20 -right-20 w-96 h-96 bg-primary/20 rounded-full blur-[100px] pointer-events-none"></div>
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-8 max-w-2xl mx-auto">
+          ¿Listo para transformar tu análisis deportivo?
+        </h2>
+        <p class="text-on-surface-variant font-body-md mb-10 max-w-lg mx-auto">
+          Sumate a los analistas que ya confían en nuestra inteligencia artificial.
+        </p>
+        <button class="bg-primary text-on-primary px-12 py-5 rounded-2xl font-bold text-xl hover:scale-105 transition-all glow-button"
+                onclick="openAuth('register')">Empezar ahora gratis</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="w-full py-16 border-t border-outline-variant bg-background">
+    <div class="flex flex-col md:flex-row justify-between items-center px-margin-mobile md:px-gutter max-w-[1280px] mx-auto gap-8">
+      <div class="flex flex-col items-center md:items-start gap-2">
+        <span class="font-display-lg text-primary text-2xl">ScoutAI</span>
+        <p class="text-on-surface-variant font-body-md text-sm">© 2026 ScoutAI Intelligence Platform. All rights reserved.</p>
+      </div>
+      <div class="flex gap-8 flex-wrap justify-center">
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Términos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Privacidad</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Datos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">API Access</a>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- /#landing -->
 
 </body>
 </html>
