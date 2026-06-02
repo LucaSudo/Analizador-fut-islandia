@@ -793,9 +793,27 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
 
 # ── Endpoints ────────────────────────────────────────────────────────
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots():
+    content = "User-agent: *\nDisallow: /docs\nDisallow: /redoc\nSitemap: https://scoutai-b7gn.onrender.com/sitemap.xml\n"
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content)
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap():
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        "<url><loc>https://scoutai-b7gn.onrender.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>"
+        "</urlset>"
+    )
+    from fastapi.responses import Response
+    return Response(content, media_type="application/xml")
+
+
 @app.get("/")
 async def serve_frontend():
-    """Serve the test chat UI directly from the backend."""
     html_path = os.path.join(os.path.dirname(__file__), "test_chat.html")
     return FileResponse(html_path, media_type="text/html")
 
