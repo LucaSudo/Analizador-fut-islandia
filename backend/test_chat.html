@@ -113,7 +113,88 @@
 </head>
 <body class="bg-background text-on-surface font-body-md overflow-x-hidden">
 
-<!-- Secciones se agregan en tasks siguientes -->
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  LANDING                                              -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="landing">
+
+  <!-- Navbar -->
+  <nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-glass-border">
+    <div class="flex justify-between items-center px-gutter py-4 max-w-[1280px] mx-auto">
+      <span class="font-display-lg text-primary tracking-tighter text-[24px]">ScoutAI</span>
+      <div class="hidden md:flex gap-8">
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Markets</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Predictions</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Insights</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Pricing</a>
+      </div>
+      <div class="flex items-center gap-4">
+        <button class="hidden sm:block text-on-surface-variant hover:text-primary transition-all font-body-md"
+                onclick="openAuth('login')">Login</button>
+        <button class="bg-primary text-on-primary px-6 py-2 rounded-lg font-bold hover:opacity-80 transition-all active:scale-95 glow-button"
+                onclick="openAuth('register')">Get Started</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-24 px-margin-mobile overflow-hidden">
+    <div class="absolute inset-0 bg-grid -z-10"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] -z-10"></div>
+
+    <div class="max-w-[1280px] mx-auto text-center z-10">
+      <div class="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 px-4 py-1.5 rounded-full mb-8">
+        <span class="material-symbols-outlined text-[18px] text-primary"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <span class="font-label-caps text-label-caps text-primary">NUEVA INTELIGENCIA PREDICTIVA</span>
+      </div>
+
+      <h1 class="font-display-lg text-headline-sm md:text-display-lg mb-6 leading-tight max-w-4xl mx-auto text-on-surface">
+        Análisis de fútbol con
+        <span class="text-primary-container hero-glow">inteligencia artificial</span>
+      </h1>
+
+      <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mx-auto mb-10 text-lg">
+        Pedí predicciones sobre cualquier partido y obtené estadísticas reales analizadas por IA.
+        La herramienta definitiva para analistas de alto rendimiento.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <button class="w-full sm:w-auto bg-primary text-on-primary px-10 py-4 rounded-xl font-bold text-lg glow-button hover:scale-105 transition-all duration-300"
+                onclick="openAuth('register')">Empezar gratis</button>
+        <button class="w-full sm:w-auto bg-transparent border border-glass-border hover:bg-white/5 text-on-surface px-10 py-4 rounded-xl font-bold text-lg transition-all"
+                onclick="openAuth('login')">Ya tengo cuenta</button>
+      </div>
+
+      <!-- Dashboard mockup -->
+      <div class="mt-20 relative max-w-5xl mx-auto px-4">
+        <div class="glass-card rounded-2xl p-4 shadow-2xl border border-glass-border">
+          <div class="rounded-xl w-full aspect-video bg-surface-container-low flex items-center justify-center">
+            <div class="text-center space-y-3">
+              <span class="material-symbols-outlined text-primary text-5xl"
+                    style="font-variation-settings:'FILL' 1;">analytics</span>
+              <p class="font-label-caps text-label-caps text-on-surface-variant">PREDICTIVE ANALYSIS ENGINE</p>
+            </div>
+          </div>
+        </div>
+        <!-- Floating badge -->
+        <div class="absolute -top-10 -right-10 hidden lg:block glass-card p-6 rounded-2xl">
+          <div class="flex items-center gap-3">
+            <div class="bg-neon-accent/20 p-2 rounded-lg">
+              <span class="material-symbols-outlined text-neon-accent">trending_up</span>
+            </div>
+            <div>
+              <p class="text-xs text-on-surface-variant uppercase font-label-caps">Win Probability</p>
+              <p class="text-xl font-data-point text-primary">87.4%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- Features, Pricing, CTA y Footer se agregan en Task 3 -->
+</div><!-- /#landing — CIERRE TEMPORAL -->
 
 </body>
 </html>
