@@ -551,7 +551,58 @@
 
     <!-- Dashboard body: chat + widgets -->
     <div id="dashboard-body" style="flex:1;display:flex;overflow:hidden;padding:24px;gap:24px;">
-      <!-- Chat panel y widgets se agregan en Task 6 y 7 -->
+      <!-- Chat panel -->
+      <section id="chat-col" class="glass-panel rounded-xl overflow-hidden inner-glow flex flex-col"
+               style="flex:1.5;min-width:0;">
+        <div class="p-6 border-b border-glass-border flex justify-between items-center bg-surface-container-low/30 flex-shrink-0">
+          <div>
+            <h2 class="font-headline-lg text-[20px] text-on-surface">Predictive Analysis Engine</h2>
+            <p class="text-on-surface-variant text-[13px] mt-1">Powered by ScoutAI Neural Network</p>
+          </div>
+          <span class="material-symbols-outlined text-primary"
+                style="font-variation-settings:'FILL' 1;">bolt</span>
+        </div>
+
+        <div id="chat" class="flex-1 overflow-y-auto p-6 space-y-6">
+          <div class="flex justify-start gap-4">
+            <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40">
+              <span class="material-symbols-outlined text-primary text-[20px]"
+                    style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+            </div>
+            <div class="max-w-[85%]">
+              <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+                <p class="text-on-surface text-[14px] leading-relaxed">
+                  ¡Hola! Soy ScoutAI. Podés pedirme análisis de partidos, combinadas del día, o preguntarme cuándo juega tu equipo. ¿En qué te ayudo?
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 bg-surface-container-lowest border-t border-glass-border flex-shrink-0">
+          <div class="relative">
+            <textarea id="msg-input" rows="1" placeholder="Preguntame sobre un partido..."
+                      class="w-full bg-charcoal border border-glass-border focus:border-primary rounded-xl px-6 py-4 text-on-surface text-[14px] pr-16 transition-all duration-300 resize-none focus:outline-none font-body-md"
+                      style="min-height:52px;max-height:120px;line-height:1.4;"></textarea>
+            <button id="btn-send" onclick="send()"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-primary text-background rounded-lg flex items-center justify-center active:scale-90 transition-transform"
+                    style="box-shadow:0 4px 12px rgba(164,230,255,0.2)">
+              <span class="material-symbols-outlined text-[20px]">send</span>
+            </button>
+          </div>
+          <div class="flex gap-4 mt-4">
+            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">trending_up</span> Hot Matches
+            </button>
+            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">psychology</span> High Confidence
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Placeholder widgets (Task 7 lo reemplaza) -->
+      <div id="widgets-placeholder" style="flex:1;min-width:0;"></div>
     </div>
 
   </main>
