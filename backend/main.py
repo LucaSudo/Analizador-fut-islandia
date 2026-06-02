@@ -139,8 +139,15 @@ _RE_NUEVO_ANALISIS = re.compile(
     r'otra vez el an[áa]lisis|volv[éeè] a analizar|'
     r'de nuevo el an[áa]lisis|reanaliz[áa]|'
     r'analiz[áa] otro|analiz[áa] el (?:siguiente|otro)|'
-    r'apost(?:ar|emos)|combinada|acumuladora'
+    r'apost(?:ar|emos)|combinada|acumuladora|'
+    # confirmaciones de análisis nuevo: "hacelo", "dale", "analizá ese", etc.
+    r'hacelo|hac[éeè]lo|analizalo|analiz[áa]lo|'
+    r'analiz[áa] ese|analizá ese|analiz[áa] el partido|analizá el partido|'
+    r'hac[éeè] el an[áa]lisis|hac[éeè] ese an[áa]lisis|'
+    r'and[áa]|dale'
     r')\b|'
+    # "sí/ok + verbo de análisis" (prefijo, sin \b al final)
+    r'\b(?:s[íi]|ok)\s+(?:haz|hac[éeè]|analiz)|'
     # foco específico nuevo con verbo de futuro/pregunta
     r'(?:cu[aá]nt[oa]s|hab[rr][áa]|va\s+a\s+haber|hay)\s+'
     r'(?:corners?|tarjetas?|goles?|remates?|faltas?|amarillas?|rojas?)',
@@ -153,8 +160,20 @@ def _es_pedido_nuevo_analisis(msg: str) -> bool:
 
 
 def _hay_analisis_previo(history: list) -> bool:
-    """True si en los últimos N mensajes del assistant hay un análisis
-    (detectado por header con ⚽ o por 'Total esperado' textual)."""
+    """True si hay análisis previo en el historial.
+    Devuelve False si el assistant mostró recientemente un fixture nuevo:
+    en ese caso el usuario probablemente confirma ESE partido, no el anterior."""
+    _LIGA_HINTS = (
+        "copa", "liga", "league", "premier", "bundesliga", "serie",
+        "ligue", "libertadores", "sudamericana", "saudi", "deild",
+        "champions", "torneo", "primera", "segunda",
+    )
+    msgs_assistant = [m for m in reversed(history[-6:]) if m.get("role") == "assistant"]
+    for m in msgs_assistant[:2]:
+        c = m.get("content", "").lower()
+        if " vs " in c and any(kw in c for kw in _LIGA_HINTS):
+            return False
+
     for m in reversed(history[-12:]):
         if m.get("role") != "assistant":
             continue

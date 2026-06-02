@@ -947,8 +947,9 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
     if btts1 is not None and btts2 is not None:
         btts_prob = min(btts1 * btts2, 0.95)   # cap: nunca mostrar 100% absoluto
         btts_rec  = "Sí" if btts_prob >= 0.50 else "No"
-        btts_conf = ("Alta 🟢"  if btts_prob >= 0.70 else
-                     "Media 🟡" if btts_prob >= 0.50 else
+        _btts_dist = abs(btts_prob - 0.50)
+        btts_conf = ("Alta 🟢"  if _btts_dist >= 0.20 else
+                     "Media 🟡" if _btts_dist >= 0.10 else
                      "Baja 🔴")
         lineas_ctx.insert(0, (
             f"  btts (ambos anotan): P({equipo1} anota)={btts1*100:.0f}%"
@@ -1884,6 +1885,41 @@ CASO C — Varios partidos específicos:
 
 Stats válidas: corners, goles, tarjetas_amarillas, tarjetas_rojas, remates, faltas (y variantes _1h/_2h)
 ACTION:COMBINADA va SIEMPRE AL FINAL. NUNCA mezcles con ACTION:ANALIZAR.
+
+════════════════════════════════════════
+REGLA ABSOLUTA N°12 — PROHIBIDO NARRAR ACCIONES + CONFIRMACIÓN DIRECTA
+════════════════════════════════════════
+
+PROHIBIDO ABSOLUTO — nunca escribas estas frases ni variantes:
+- "necesito disparar la acción"
+- "voy a lanzar el análisis"
+- "para hacer el análisis debo"
+- "déjame confirmar que"
+- "primero necesito saber"
+- "antes de analizarlo, confirmame"
+- "para poder analizarlo necesito"
+Si tenés suficiente información para emitir ACTION:ANALIZAR → emitila DE INMEDIATO, sin preámbulo.
+
+PARTIDO CON UN SOLO EQUIPO MENCIONADO Y SIN RIVAL CLARO:
+Si el usuario pide análisis pero solo mencionó un equipo y el rival NO aparece en tu
+lista de fixtures → emití inmediatamente:
+  ACTION:BUSCAR_FIXTURE|<nombre equipo>
+No hagas preguntas ni respondas con chat antes. Buscá el fixture primero.
+
+CONFIRMACIÓN DESPUÉS DE FIXTURE MOSTRADO — OBLIGATORIO:
+Si en el historial reciente VOS mostraste un fixture (una línea con "vs" + nombre de
+liga/copa/torneo), y el usuario responde con CUALQUIERA de estas confirmaciones:
+  "hacelo", "dale", "sí", "ese", "analizá ese", "hacé el análisis", "ok",
+  "andá", "analizalo", "sí hacelo", "sí hazlo", "hace ese análisis"
+→ Emití DIRECTAMENTE ACTION:ANALIZAR con los equipos y liga del fixture mostrado.
+NUNCA vuelvas a preguntar "¿Es ese el partido que te interesa?" cuando ya mostraste el fixture.
+NUNCA pidas confirmación extra si el fixture ya está en el contexto.
+
+CON AMBOS EQUIPOS EN CONTEXTO — PROHIBIDO PREGUNTAR EL FOCO:
+Si el contexto ya tiene ambos equipos y la liga → emití ACTION:ANALIZAR directamente
+con foco "completo" (o el foco que el usuario pidió).
+NUNCA preguntes "¿Querés que analice goles, corners, tarjetas...?" cuando ya tenés
+todos los datos. Esa pregunta está PROHIBIDA si ya tenés partido + liga.
 """
 
 # ── Detection helpers ────────────────────────────────────────────────
