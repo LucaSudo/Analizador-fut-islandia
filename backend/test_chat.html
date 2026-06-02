@@ -686,5 +686,493 @@
   </main>
 </div><!-- /#app -->
 
+
+<script>
+  // ── Constantes ────────────────────────────────────────────────────────
+  const SUPABASE_URL  = "https://vyjkjyciwifrbfuhbyrk.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5amtqeWNpd2lmcmJmdWhieXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzg4OTUsImV4cCI6MjA5NTY1NDg5NX0.Nu3mAGcUnBpxuMwIDXB2nBmxfk06KMVVgGqfzwOr4Q4";
+  const BASE_URL      = "https://scoutai-b7gn.onrender.com";
+
+  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  let _session    = null;
+  let _authMode   = "login";
+  let _usageCount = 0;
+
+  // ── Auth state ────────────────────────────────────────────────────────
+  _sb.auth.onAuthStateChange((event, session) => {
+    _session = session;
+    if (session) {
+      const nombre = session.user.user_metadata?.nombre || session.user.email.split("@")[0];
+      enterApp(nombre);
+    } else {
+      exitApp();
+    }
+  });
+
+  function enterApp(nombre) {
+    document.getElementById("landing").classList.add("hidden");
+    document.getElementById("auth-overlay").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    const avatar = document.getElementById("user-avatar");
+    if (avatar) avatar.textContent = nombre.charAt(0).toUpperCase();
+    document.getElementById("user-label").textContent = nombre;
+    _usageCount = 0;
+    updateUsageBar();
+  }
+
+  function exitApp() {
+    document.getElementById("app").classList.add("hidden");
+    document.getElementById("auth-overlay").classList.add("hidden");
+    document.getElementById("landing").classList.remove("hidden");
+  }
+
+  // ── Auth overlay ──────────────────────────────────────────────────────
+  function openAuth(mode) {
+    switchTab(mode);
+    document.getElementById("auth-overlay").classList.remove("hidden");
+  }
+
+  function closeAuth() {
+    document.getElementById("auth-overlay").classList.add("hidden");
+    clearAuthMsg();
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById("auth-overlay")) closeAuth();
+  }
+
+  function switchTab(mode) {
+    _authMode = mode;
+    const tl = document.getElementById("tab-login");
+    const tr = document.getElementById("tab-register");
+    tl.classList.toggle("text-primary",            mode === "login");
+    tl.classList.toggle("border-b-2",              mode === "login");
+    tl.classList.toggle("border-primary",          mode === "login");
+    tl.classList.toggle("text-on-surface-variant", mode !== "login");
+    tr.classList.toggle("text-primary",            mode === "register");
+    tr.classList.toggle("border-b-2",              mode === "register");
+    tr.classList.toggle("border-primary",          mode === "register");
+    tr.classList.toggle("text-on-surface-variant", mode !== "register");
+    document.getElementById("btn-text").textContent =
+      mode === "login" ? "Iniciar sesión" : "Registrarse";
+    document.getElementById("field-nombre").style.display =
+      mode === "register" ? "block" : "none";
+    clearAuthMsg();
+  }
+
+  function showAuthMsg(text, type) {
+    const el = document.getElementById("auth-msg");
+    el.textContent = text;
+    el.className = type === "error"
+      ? "rounded-lg px-4 py-3 font-body-md text-sm bg-[#2d1212] border border-[#8b2020] text-[#ff8a80]"
+      : "rounded-lg px-4 py-3 font-body-md text-sm bg-[#0d2b0d] border border-[#2e7d32] text-[#a5d6a7]";
+    el.classList.remove("hidden");
+  }
+
+  function clearAuthMsg() {
+    const el = document.getElementById("auth-msg");
+    el.textContent = "";
+    el.classList.add("hidden");
+  }
+
+  async function authAction(e) {
+    if (e) e.preventDefault();
+    const email  = document.getElementById("auth-email").value.trim();
+    const pass   = document.getElementById("auth-pass").value;
+    const nombre = document.getElementById("auth-nombre").value.trim();
+    if (!email || !pass) { showAuthMsg("Completá email y contraseña.", "error"); return; }
+    if (_authMode === "register" && !nombre) { showAuthMsg("Completá tu nombre.", "error"); return; }
+
+    const btn = document.getElementById("auth-submit");
+    btn.disabled = true;
+    document.getElementById("btn-text").textContent = "Cargando...";
+    clearAuthMsg();
+
+    try {
+      let result;
+      if (_authMode === "login") {
+        result = await _sb.auth.signInWithPassword({ email, password: pass });
+      } else {
+        result = await _sb.auth.signUp({ email, password: pass, options: { data: { nombre } } });
+        if (!result.error && result.data?.user?.identities?.length === 0) {
+          showAuthMsg("Ese email ya está registrado. Iniciá sesión.", "error"); return;
+        }
+        if (!result.error && !result.data?.session) {
+          switchTab("login");
+          showAuthMsg("¡Cuenta creada! Revisá tu email para confirmar.", "success"); return;
+        }
+      }
+      if (result.error) showAuthMsg(result.error.message, "error");
+    } finally {
+      btn.disabled = false;
+      document.getElementById("btn-text").textContent =
+        _authMode === "login" ? "Iniciar sesión" : "Registrarse";
+    }
+  }
+
+  // Password visibility toggle
+  const toggleBtn  = document.getElementById("toggle-pass");
+  const passInput  = document.getElementById("auth-pass");
+  const toggleIcon = toggleBtn.querySelector(".material-symbols-outlined");
+  toggleBtn.addEventListener("mousedown",  () => { passInput.type = "text";     toggleIcon.textContent = "visibility_off"; });
+  toggleBtn.addEventListener("mouseup",    () => { passInput.type = "password"; toggleIcon.textContent = "visibility"; });
+  toggleBtn.addEventListener("mouseleave", () => { passInput.type = "password"; toggleIcon.textContent = "visibility"; });
+
+  ["auth-email","auth-pass","auth-nombre"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") authAction(null); });
+  });
+
+  async function logout() { await _sb.auth.signOut(); }
+
+  // ── Barra de uso ──────────────────────────────────────────────────────
+  const USAGE_MAX = 3;
+
+  function updateUsageBar() {
+    const pct = Math.min((_usageCount / USAGE_MAX) * 100, 100);
+    const bar = document.getElementById("usage-bar");
+    const lbl = document.getElementById("usage-label");
+    if (bar) bar.style.width = pct + "%";
+    if (lbl) lbl.textContent = `${_usageCount}/${USAGE_MAX} Usados`;
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────────────
+  let sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+
+  const msgInput = document.getElementById("msg-input");
+  msgInput.addEventListener("input", () => {
+    msgInput.style.height = "auto";
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
+  });
+  msgInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  function newChat() {
+    sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+    document.getElementById("chat").innerHTML = `
+      <div class="flex justify-start gap-4">
+        <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40">
+          <span class="material-symbols-outlined text-primary text-[20px]"
+                style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        </div>
+        <div class="max-w-[85%]">
+          <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+            <p class="text-on-surface text-[14px] leading-relaxed">Nueva sesión iniciada. ¿En qué te ayudo?</p>
+          </div>
+        </div>
+      </div>`;
+    resetWidgets();
+  }
+
+  function scrollToBottom() {
+    const c = document.getElementById("chat");
+    if (c) c.scrollTop = c.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function addUserBubble(text) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = "flex justify-end";
+    div.innerHTML = `<div class="max-w-[80%] bg-surface-variant p-4 rounded-2xl rounded-tr-none text-on-surface text-[14px]">${escapeHtml(text)}</div>`;
+    chat.appendChild(div);
+    scrollToBottom();
+  }
+
+  function addBotBubble(type, content, header = null) {
+    const chat = document.getElementById("chat");
+    const wrap = document.createElement("div");
+    wrap.className = "flex justify-start gap-4";
+
+    let innerHtml = "";
+    if (type === "analysis" && header) {
+      const paras = content.replace(/\n[ \t]+\n/g, "\n\n")
+        .split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const parasHtml = paras.map(p => {
+        const cls = p.startsWith("⚠️")
+          ? "text-[12.5px] italic text-on-surface-variant py-2 border-t border-glass-border"
+          : "text-[14px] py-2 border-t border-glass-border first:border-0";
+        return `<div class="${cls}">${escapeHtml(p)}</div>`;
+      }).join("");
+      innerHtml = `
+        <div class="glass-panel p-5 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+          <div class="text-[13px] text-primary border-b border-glass-border pb-2 mb-3 whitespace-pre-wrap">${escapeHtml(header)}</div>
+          <div>${parasHtml}</div>
+        </div>`;
+    } else if (type === "combinada") {
+      innerHtml = `
+        <div class="glass-panel p-5 rounded-2xl rounded-tl-none border-l-2 text-[14px] leading-relaxed text-on-surface whitespace-pre-wrap"
+             style="border-left-color:#00FFC2">${escapeHtml(content)}</div>`;
+    } else {
+      innerHtml = `
+        <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+          <p class="text-on-surface text-[14px] leading-relaxed">${escapeHtml(content)}</p>
+        </div>`;
+    }
+
+    wrap.innerHTML = `
+      <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40 flex-shrink-0">
+        <span class="material-symbols-outlined text-primary text-[20px]"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+      </div>
+      <div class="max-w-[85%] min-w-0">${innerHtml}</div>`;
+    chat.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function addStatus(msg) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.id = "current-status";
+    div.className = "flex justify-start gap-4 items-center";
+    div.innerHTML = `
+      <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 animate-pulse">
+        <span class="material-symbols-outlined text-primary text-[20px]">psychology</span>
+      </div>
+      <div class="glass-panel px-6 py-4 rounded-full flex items-center gap-2">
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay:-0.15s"></div>
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay:-0.3s"></div>
+        <span id="status-text" class="text-[13px] text-on-surface-variant ml-2">${escapeHtml(msg)}</span>
+      </div>`;
+    chat.appendChild(div);
+    scrollToBottom();
+  }
+
+  function updateStatus(msg) {
+    const el = document.getElementById("status-text");
+    if (el) el.textContent = msg;
+    scrollToBottom();
+  }
+
+  function removeStatus() {
+    const el = document.getElementById("current-status");
+    if (el) el.remove();
+  }
+
+  async function send() {
+    const input   = document.getElementById("msg-input");
+    const btnSend = document.getElementById("btn-send");
+    const message = input.value.trim();
+    if (!message || !_session) return;
+
+    input.value = ""; input.style.height = "auto";
+    btnSend.disabled = true;
+    addUserBubble(message);
+    addStatus("💬 Conectando...");
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token || "";
+    const tzOffsetHours = -new Date().getTimezoneOffset() / 60;
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "X-Timezone-Offset": String(new Date().getTimezoneOffset()),
+        },
+        body: JSON.stringify({ message, session_id: sessionId, tz_offset_hours: tzOffsetHours })
+      });
+
+      if (!res.ok) {
+        removeStatus();
+        const detail = await res.json().catch(() => ({ detail: res.statusText }));
+        const errMsg = res.status === 429
+          ? "⏳ " + detail.detail
+          : `❌ Error ${res.status}: ${detail.detail || res.statusText}`;
+        addBotBubble("chat", errMsg);
+        return;
+      }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "", curEvent = "message", streamDone = false;
+
+      while (!streamDone) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          const clean = line.endsWith("\r") ? line.slice(0, -1) : line;
+          if (clean.startsWith("event: ")) { curEvent = clean.slice(7).trim(); continue; }
+          if (!clean.startsWith("data: ")) continue;
+          let data; try { data = JSON.parse(clean.slice(6)); } catch { continue; }
+
+          if (curEvent === "status") {
+            updateStatus(data.message);
+          } else if (curEvent === "response") {
+            removeStatus();
+            if (data.type === "analysis") {
+              addBotBubble("analysis", data.content, data.header);
+              _usageCount++;
+              updateUsageBar();
+              parseAnalysisForWidgets((data.header || "") + "\n" + (data.content || ""));
+            } else if (data.type === "combinada") {
+              addBotBubble("combinada", data.content);
+              _usageCount++;
+              updateUsageBar();
+            } else {
+              addBotBubble("chat", data.content);
+            }
+          } else if (curEvent === "error") {
+            removeStatus();
+            addBotBubble("chat", "❌ " + data.message);
+            streamDone = true;
+          } else if (curEvent === "done") {
+            removeStatus(); streamDone = true;
+          }
+          curEvent = "message";
+        }
+      }
+    } catch (err) {
+      removeStatus();
+      addBotBubble("chat", "❌ No se pudo conectar: " + err.message);
+    } finally {
+      btnSend.disabled = false;
+      input.focus();
+    }
+  }
+
+  // ── Widgets ───────────────────────────────────────────────────────────
+  function resetWidgets() {
+    document.getElementById("widget-corners-avg").textContent = "—";
+    renderCornerBars([]);
+    document.getElementById("widget-shots-label").textContent     = "—";
+    document.getElementById("widget-shots-team1-name").textContent = "Local";
+    document.getElementById("widget-shots-team1-val").textContent  = "—";
+    document.getElementById("widget-shots-team2-name").textContent = "Visitante";
+    document.getElementById("widget-shots-team2-val").textContent  = "—";
+    document.getElementById("widget-shots-bar1").style.width = "0%";
+    document.getElementById("widget-shots-bar2").style.width = "0%";
+    document.getElementById("widget-disc-pct").textContent = "—";
+    document.getElementById("widget-disc-circle").setAttribute("stroke-dashoffset", "251.2");
+    document.getElementById("widget-disc-text").textContent =
+      "Sin datos aún. Analizá un partido para ver el índice de disciplina.";
+  }
+
+  function renderCornerBars(values) {
+    const container = document.getElementById("widget-corners-bars");
+    container.innerHTML = "";
+    const isEmpty = values.length === 0;
+    const display = isEmpty
+      ? Array(7).fill(0)
+      : (values.length >= 7 ? values.slice(-7) : [...Array(7 - values.length).fill(0), ...values]);
+    const max = isEmpty ? 1 : Math.max(...display, 1);
+
+    display.forEach(v => {
+      const pct = isEmpty ? 10 : Math.max((v / max) * 100, 4);
+      const isHighest = !isEmpty && v === Math.max(...values);
+      const bar = document.createElement("div");
+      bar.style.cssText = `flex:1;border-radius:2px 2px 0 0;height:${pct}%;transition:height 0.7s ease;`;
+      bar.className = isHighest
+        ? "bg-primary/60 hover:bg-primary"
+        : "bg-surface-variant/40 hover:bg-primary/40";
+      if (isEmpty) bar.style.opacity = "0.3";
+      container.appendChild(bar);
+    });
+  }
+
+  function parseAnalysisForWidgets(text) {
+    if (!text) return;
+
+    // ── Corners ──────────────────────────────────────────────────────
+    const cornerPatterns = [
+      /(\d+(?:\.\d+)?)\s*corners?\s+promedio/i,
+      /promedio[^.]*?(\d+(?:\.\d+)?)\s*corners?/i,
+      /corners?[:\s]+(\d+(?:\.\d+)?)/i,
+      /(\d+(?:\.\d+)?)\s+corners?\s+por\s+partido/i,
+    ];
+    let cornerAvg = null;
+    for (const re of cornerPatterns) {
+      const m = text.match(re);
+      if (m) { cornerAvg = parseFloat(m[1]); break; }
+    }
+    if (cornerAvg !== null) {
+      document.getElementById("widget-corners-avg").textContent = cornerAvg.toFixed(1) + " avg";
+      renderCornerBars([cornerAvg]);
+    }
+
+    // ── Shots ─────────────────────────────────────────────────────────
+    const teamMatch = text.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})\s+vs\.?\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})/i);
+    if (teamMatch) {
+      document.getElementById("widget-shots-team1-name").textContent = teamMatch[1].trim().split(/\s+/)[0];
+      document.getElementById("widget-shots-team2-name").textContent = teamMatch[2].trim().split(/\s+/)[0];
+    }
+
+    const shotsHome = [
+      /remates?[^.]*?(?:local|casa|home)[^.]*?(\d+)/i,
+      /(\d+)\s+remates?[^.]*?(?:en\s+casa|local)/i,
+    ];
+    const shotsAway = [
+      /remates?[^.]*?(?:visitante|visita|away)[^.]*?(\d+)/i,
+      /(\d+)\s+remates?[^.]*?(?:visitante|visita)/i,
+    ];
+    let shots1 = null, shots2 = null;
+    for (const re of shotsHome) { const m = text.match(re); if (m) { shots1 = parseInt(m[1]); break; } }
+    for (const re of shotsAway) { const m = text.match(re); if (m) { shots2 = parseInt(m[1]); break; } }
+
+    if (shots1 !== null || shots2 !== null) {
+      const s1 = shots1 ?? 0, s2 = shots2 ?? 0;
+      const maxS = Math.max(s1, s2, 1);
+      document.getElementById("widget-shots-team1-val").textContent = s1;
+      document.getElementById("widget-shots-team2-val").textContent = s2;
+      document.getElementById("widget-shots-bar1").style.width = ((s1 / maxS) * 100) + "%";
+      document.getElementById("widget-shots-bar2").style.width = ((s2 / maxS) * 100) + "%";
+      document.getElementById("widget-shots-label").textContent = `${s1 + s2} total`;
+    }
+
+    // ── Discipline ────────────────────────────────────────────────────
+    const riskPatterns = [
+      /riesgo[:\s]+(\d+)\s*%/i,
+      /(\d+)\s*%\s+(?:de\s+)?riesgo/i,
+      /probabilidad[^.]*?tarjeta[^.]*?(\d+)\s*%/i,
+      /(\d+)\s*%[^.]*?tarjeta/i,
+    ];
+    let riskPct = null;
+    for (const re of riskPatterns) { const m = text.match(re); if (m) { riskPct = parseInt(m[1]); break; } }
+    if (riskPct === null) {
+      const yellow = (text.match(/tarjetas?\s+amarillas?/gi) || []).length;
+      const red    = (text.match(/tarjetas?\s+rojas?/gi) || []).length;
+      if (yellow + red > 0) riskPct = Math.min(40 + yellow * 15 + red * 25, 95);
+    }
+
+    if (riskPct !== null) {
+      const offset = 251.2 - (riskPct / 100) * 251.2;
+      document.getElementById("widget-disc-pct").textContent = riskPct + "%";
+      document.getElementById("widget-disc-circle").setAttribute("stroke-dashoffset", offset.toFixed(1));
+      document.getElementById("widget-disc-text").textContent = riskPct >= 70
+        ? `Alta probabilidad de tarjeta amarilla (${riskPct}% riesgo).`
+        : riskPct >= 40
+        ? `Riesgo moderado de tarjeta (${riskPct}%).`
+        : `Bajo riesgo disciplinario (${riskPct}%).`;
+    }
+  }
+
+  // ── Scroll reveal (landing) ───────────────────────────────────────────
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("opacity-100");
+        entry.target.classList.remove("opacity-0", "translate-y-8");
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll("#landing section").forEach(section => {
+    section.classList.add("transition-all", "duration-700", "opacity-0", "translate-y-8");
+    revealObserver.observe(section);
+  });
+</script>
 </body>
 </html>
