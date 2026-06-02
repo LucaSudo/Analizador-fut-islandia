@@ -95,6 +95,35 @@ def _limpiar_formato(texto: str) -> str:
     return texto
 
 
+def _extraer_widget_data(equipo1: str, equipo2: str, lineas_py: dict,
+                         prom_eq1: dict, prom_eq2: dict) -> dict:
+    """Datos estructurados para los widgets del dashboard frontend."""
+    def _total(key):
+        entry = lineas_py.get(key)
+        return round(entry[0], 2) if entry else None
+
+    def _prom(prom, stat):
+        v = prom.get(stat)
+        return round(v, 2) if v is not None else None
+
+    # Corners: busca clave exacta primero, luego cualquier corners_antes_X
+    corners_avg = _total("corners")
+    if corners_avg is None:
+        for k, v in lineas_py.items():
+            if k.startswith("corners"):
+                corners_avg = round(v[0], 2)
+                break
+
+    return {
+        "team1":       equipo1,
+        "team2":       equipo2,
+        "corners_avg": corners_avg,
+        "shots_home":  _prom(prom_eq1, "ALL_Shots on target"),
+        "shots_away":  _prom(prom_eq2, "ALL_Shots on target"),
+        "yellow_avg":  _total("tarjetas_amarillas"),
+    }
+
+
 # #0i: el mapeo de aliases de liga vive ahora en engine.py (fuente única).
 # Acá solo usamos engine.detectar_liga_en_mensaje() / engine.normalizar_liga().
 
@@ -780,6 +809,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 "type":    "analysis",
                 "header":  header,
                 "content": analisis_limpio,
+                "widgets": _extraer_widget_data(equipo1, equipo2, lineas_py, prom_eq1, prom_eq2),
             })
 
             try:

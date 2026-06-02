@@ -1017,7 +1017,7 @@
               addBotBubble("analysis", data.content, data.header);
               _usageCount++;
               updateUsageBar();
-              parseAnalysisForWidgets((data.header || "") + "\n" + (data.content || ""));
+              applyWidgets(data.widgets);
             } else if (data.type === "combinada") {
               addBotBubble("combinada", data.content);
               _usageCount++;
@@ -1083,79 +1083,49 @@
     });
   }
 
-  function parseAnalysisForWidgets(text) {
-    if (!text) return;
+  function applyWidgets(w) {
+    if (!w) return;
 
-    // ── Corners ──────────────────────────────────────────────────────
-    const cornerPatterns = [
-      /(\d+(?:\.\d+)?)\s*corners?\s+promedio/i,
-      /promedio[^.]*?(\d+(?:\.\d+)?)\s*corners?/i,
-      /corners?[:\s]+(\d+(?:\.\d+)?)/i,
-      /(\d+(?:\.\d+)?)\s+corners?\s+por\s+partido/i,
-    ];
-    let cornerAvg = null;
-    for (const re of cornerPatterns) {
-      const m = text.match(re);
-      if (m) { cornerAvg = parseFloat(m[1]); break; }
-    }
-    if (cornerAvg !== null) {
-      document.getElementById("widget-corners-avg").textContent = cornerAvg.toFixed(1) + " avg";
-      renderCornerBars([cornerAvg]);
+    // ── Equipos ───────────────────────────────────────────────────────
+    if (w.team1) document.getElementById("widget-shots-team1-name").textContent = w.team1.split(" ")[0];
+    if (w.team2) document.getElementById("widget-shots-team2-name").textContent = w.team2.split(" ")[0];
+
+    // ── Corners ───────────────────────────────────────────────────────
+    if (w.corners_avg != null) {
+      document.getElementById("widget-corners-avg").textContent = w.corners_avg.toFixed(1) + " avg";
+      // Genera 7 barras representativas alrededor del promedio
+      const a = w.corners_avg;
+      renderCornerBars([
+        Math.max(a - 1.5, 1), Math.max(a - 0.5, 1), Math.max(a + 1, 1),
+        a, Math.max(a - 1, 1), Math.max(a + 0.5, 1), Math.max(a - 0.8, 1),
+      ]);
     }
 
-    // ── Shots ─────────────────────────────────────────────────────────
-    const teamMatch = text.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})\s+vs\.?\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})/i);
-    if (teamMatch) {
-      document.getElementById("widget-shots-team1-name").textContent = teamMatch[1].trim().split(/\s+/)[0];
-      document.getElementById("widget-shots-team2-name").textContent = teamMatch[2].trim().split(/\s+/)[0];
-    }
-
-    const shotsHome = [
-      /remates?[^.]*?(?:local|casa|home)[^.]*?(\d+)/i,
-      /(\d+)\s+remates?[^.]*?(?:en\s+casa|local)/i,
-    ];
-    const shotsAway = [
-      /remates?[^.]*?(?:visitante|visita|away)[^.]*?(\d+)/i,
-      /(\d+)\s+remates?[^.]*?(?:visitante|visita)/i,
-    ];
-    let shots1 = null, shots2 = null;
-    for (const re of shotsHome) { const m = text.match(re); if (m) { shots1 = parseInt(m[1]); break; } }
-    for (const re of shotsAway) { const m = text.match(re); if (m) { shots2 = parseInt(m[1]); break; } }
-
-    if (shots1 !== null || shots2 !== null) {
-      const s1 = shots1 ?? 0, s2 = shots2 ?? 0;
+    // ── Shots on Target ───────────────────────────────────────────────
+    const s1 = w.shots_home ?? 0;
+    const s2 = w.shots_away ?? 0;
+    if (s1 > 0 || s2 > 0) {
       const maxS = Math.max(s1, s2, 1);
-      document.getElementById("widget-shots-team1-val").textContent = s1;
-      document.getElementById("widget-shots-team2-val").textContent = s2;
+      document.getElementById("widget-shots-team1-val").textContent = s1.toFixed(1);
+      document.getElementById("widget-shots-team2-val").textContent = s2.toFixed(1);
       document.getElementById("widget-shots-bar1").style.width = ((s1 / maxS) * 100) + "%";
       document.getElementById("widget-shots-bar2").style.width = ((s2 / maxS) * 100) + "%";
-      document.getElementById("widget-shots-label").textContent = `${s1 + s2} total`;
+      document.getElementById("widget-shots-label").textContent = (s1 + s2).toFixed(1) + " total";
     }
 
-    // ── Discipline ────────────────────────────────────────────────────
-    const riskPatterns = [
-      /riesgo[:\s]+(\d+)\s*%/i,
-      /(\d+)\s*%\s+(?:de\s+)?riesgo/i,
-      /probabilidad[^.]*?tarjeta[^.]*?(\d+)\s*%/i,
-      /(\d+)\s*%[^.]*?tarjeta/i,
-    ];
-    let riskPct = null;
-    for (const re of riskPatterns) { const m = text.match(re); if (m) { riskPct = parseInt(m[1]); break; } }
-    if (riskPct === null) {
-      const yellow = (text.match(/tarjetas?\s+amarillas?/gi) || []).length;
-      const red    = (text.match(/tarjetas?\s+rojas?/gi) || []).length;
-      if (yellow + red > 0) riskPct = Math.min(40 + yellow * 15 + red * 25, 95);
-    }
-
-    if (riskPct !== null) {
-      const offset = 251.2 - (riskPct / 100) * 251.2;
+    // ── Discipline Index ──────────────────────────────────────────────
+    if (w.yellow_avg != null) {
+      // yellow_avg es el total esperado por partido (ambos equipos)
+      // 5 amarillas/partido = 100% de riesgo como referencia
+      const riskPct = Math.min(Math.round((w.yellow_avg / 5) * 100), 95);
+      const offset  = 251.2 - (riskPct / 100) * 251.2;
       document.getElementById("widget-disc-pct").textContent = riskPct + "%";
       document.getElementById("widget-disc-circle").setAttribute("stroke-dashoffset", offset.toFixed(1));
       document.getElementById("widget-disc-text").textContent = riskPct >= 70
-        ? `Alta probabilidad de tarjeta amarilla (${riskPct}% riesgo).`
+        ? `Alta prob. de tarjeta — ${w.yellow_avg.toFixed(1)} amarillas/partido (${riskPct}% riesgo).`
         : riskPct >= 40
-        ? `Riesgo moderado de tarjeta (${riskPct}%).`
-        : `Bajo riesgo disciplinario (${riskPct}%).`;
+        ? `Riesgo moderado — ${w.yellow_avg.toFixed(1)} amarillas/partido (${riskPct}%).`
+        : `Bajo riesgo disciplinario — ${w.yellow_avg.toFixed(1)} amarillas/partido.`;
     }
   }
 
