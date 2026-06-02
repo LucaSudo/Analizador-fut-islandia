@@ -1,0 +1,1442 @@
+# ScoutAI Frontend Redesign — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Reescribir `backend/test_chat.html` con diseño Stitch — landing glassmorphism, auth overlay elegante, dashboard con sidebar y widgets estadísticos funcionales.
+
+**Architecture:** Archivo HTML único. Tres divs (`#landing`, `#auth-overlay`, `#app`) controlados por JS. Tailwind CDN con config custom. Lógica Supabase y SSE inalterada, adaptada a los nuevos IDs de elementos HTML.
+
+**Tech Stack:** HTML, Tailwind CDN (`cdn.tailwindcss.com`), Google Fonts (Sora/Inter/JetBrains Mono), Material Symbols Outlined, Supabase JS v2, Fetch SSE streaming
+
+---
+
+## File Map
+
+| Archivo | Acción | Descripción |
+|---|---|---|
+| `backend/test_chat.html` | Rewrite completo | Único archivo a modificar en todo el plan |
+
+---
+
+## Task 1: Head + Tailwind config + CSS utilities
+
+**Files:**
+- Modify: `backend/test_chat.html` (reemplazar todo el contenido)
+
+- [ ] **Step 1: Reemplazar el archivo completo con el nuevo head y body vacío**
+
+```html
+<!DOCTYPE html>
+<html class="dark" lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScoutAI — Análisis de fútbol con IA</title>
+  <meta name="description" content="ScoutAI analiza partidos de fútbol con IA en segundos. Predicciones de corners, goles y tarjetas para Premier League, La Liga, Copa Libertadores y más. Gratis." />
+  <link rel="canonical" href="https://scoutai-b7gn.onrender.com/" />
+  <meta property="og:title" content="ScoutAI — Análisis de fútbol con IA" />
+  <meta property="og:description" content="Predicciones de corners, goles y tarjetas con datos reales de SofaScore." />
+  <meta property="og:url" content="https://scoutai-b7gn.onrender.com/" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="ScoutAI — Análisis de fútbol con IA" />
+  <meta name="twitter:description" content="Predicciones con IA para más de 10 ligas. Gratis." />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background":               "#0e1417",
+            "charcoal":                 "#121214",
+            "surface-container":        "#1a2123",
+            "surface-container-low":    "#161d1f",
+            "surface-container-lowest": "#090f12",
+            "surface-container-high":   "#242b2e",
+            "surface-variant":          "#2f3639",
+            "primary":                  "#a4e6ff",
+            "primary-container":        "#00d1ff",
+            "primary-fixed-dim":        "#4cd6ff",
+            "on-primary":               "#003543",
+            "on-primary-fixed":         "#001f28",
+            "on-primary-container":     "#00566a",
+            "neon-accent":              "#00FFC2",
+            "on-surface":               "#dde3e7",
+            "on-surface-variant":       "#bbc9cf",
+            "on-background":            "#dde3e7",
+            "outline-variant":          "#3c494e",
+            "outline":                  "#859399",
+            "secondary":                "#c9c6c5",
+            "secondary-container":      "#4a4949",
+            "error":                    "#ffb4ab",
+            "error-container":          "#93000a",
+            "glass-border":             "rgba(255,255,255,0.1)"
+          },
+          fontFamily: {
+            "display-lg":  ["Sora", "sans-serif"],
+            "headline-lg": ["Sora", "sans-serif"],
+            "body-md":     ["Inter", "sans-serif"],
+            "label-caps":  ["JetBrains Mono", "monospace"],
+            "data-point":  ["JetBrains Mono", "monospace"]
+          },
+          fontSize: {
+            "display-lg":  ["64px", { lineHeight: "72px",  letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-lg": ["40px", { lineHeight: "48px",  letterSpacing: "-0.01em", fontWeight: "600" }],
+            "headline-sm": ["32px", { lineHeight: "40px",  fontWeight: "600" }],
+            "body-md":     ["16px", { lineHeight: "24px",  fontWeight: "400" }],
+            "label-caps":  ["12px", { lineHeight: "16px",  letterSpacing: "0.1em",  fontWeight: "500" }],
+            "data-point":  ["18px", { lineHeight: "24px",  fontWeight: "600" }]
+          },
+          spacing: {
+            "gutter":        "24px",
+            "margin-mobile": "16px"
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .glass-card {
+      background: rgba(18, 18, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-panel {
+      background: rgba(18, 18, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .inner-glow { box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05); }
+    .glow-button { box-shadow: 0 0 20px rgba(0, 209, 255, 0.2); }
+    .hero-glow  { text-shadow: 0 0 30px rgba(0, 209, 255, 0.5); }
+    .bg-grid {
+      background-image:
+        linear-gradient(to right,  rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .hidden { display: none !important; }
+    ::-webkit-scrollbar       { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0e1417; }
+    ::-webkit-scrollbar-thumb { background: #2f3639; border-radius: 10px; }
+
+    /* Mobile: ocultar sidebar, ajustar main */
+    @media (max-width: 768px) {
+      #sidebar          { display: none !important; }
+      #app-main         { margin-left: 0 !important; }
+      #dashboard-body   { flex-direction: column !important; }
+      #widgets-col      { max-height: 320px; }
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-x-hidden">
+
+<!-- Secciones se agregan en tasks siguientes -->
+
+</body>
+</html>
+```
+
+- [ ] **Step 2: Verificar**
+
+Abrir `backend/test_chat.html` en el navegador. Debe mostrar fondo negro `#0e1417`. Sin contenido visible. Sin errores de consola relacionados a Tailwind o fuentes.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): base HTML con Tailwind config y CSS utilities"
+```
+
+---
+
+## Task 2: Landing — Navbar + Hero
+
+**Files:**
+- Modify: `backend/test_chat.html` (reemplazar `<!-- Secciones se agregan... -->`)
+
+- [ ] **Step 1: Agregar `#landing` con navbar y hero**
+
+Reemplazar `<!-- Secciones se agregan en tasks siguientes -->` con:
+
+```html
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  LANDING                                              -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="landing">
+
+  <!-- Navbar -->
+  <nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-glass-border">
+    <div class="flex justify-between items-center px-gutter py-4 max-w-[1280px] mx-auto">
+      <span class="font-display-lg text-primary tracking-tighter text-[24px]">ScoutAI</span>
+      <div class="hidden md:flex gap-8">
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Markets</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Predictions</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Insights</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Pricing</a>
+      </div>
+      <div class="flex items-center gap-4">
+        <button class="hidden sm:block text-on-surface-variant hover:text-primary transition-all font-body-md"
+                onclick="openAuth('login')">Login</button>
+        <button class="bg-primary text-on-primary px-6 py-2 rounded-lg font-bold hover:opacity-80 transition-all active:scale-95 glow-button"
+                onclick="openAuth('register')">Get Started</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-24 px-margin-mobile overflow-hidden">
+    <div class="absolute inset-0 bg-grid -z-10"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] -z-10"></div>
+
+    <div class="max-w-[1280px] mx-auto text-center z-10">
+      <div class="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 px-4 py-1.5 rounded-full mb-8">
+        <span class="material-symbols-outlined text-[18px] text-primary"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <span class="font-label-caps text-label-caps text-primary">NUEVA INTELIGENCIA PREDICTIVA</span>
+      </div>
+
+      <h1 class="font-display-lg text-headline-sm md:text-display-lg mb-6 leading-tight max-w-4xl mx-auto text-on-surface">
+        Análisis de fútbol con
+        <span class="text-primary-container hero-glow">inteligencia artificial</span>
+      </h1>
+
+      <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mx-auto mb-10 text-lg">
+        Pedí predicciones sobre cualquier partido y obtené estadísticas reales analizadas por IA.
+        La herramienta definitiva para analistas de alto rendimiento.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <button class="w-full sm:w-auto bg-primary text-on-primary px-10 py-4 rounded-xl font-bold text-lg glow-button hover:scale-105 transition-all duration-300"
+                onclick="openAuth('register')">Empezar gratis</button>
+        <button class="w-full sm:w-auto bg-transparent border border-glass-border hover:bg-white/5 text-on-surface px-10 py-4 rounded-xl font-bold text-lg transition-all"
+                onclick="openAuth('login')">Ya tengo cuenta</button>
+      </div>
+
+      <!-- Dashboard mockup -->
+      <div class="mt-20 relative max-w-5xl mx-auto px-4">
+        <div class="glass-card rounded-2xl p-4 shadow-2xl border border-glass-border">
+          <div class="rounded-xl w-full aspect-video bg-surface-container-low flex items-center justify-center">
+            <div class="text-center space-y-3">
+              <span class="material-symbols-outlined text-primary text-5xl"
+                    style="font-variation-settings:'FILL' 1;">analytics</span>
+              <p class="font-label-caps text-label-caps text-on-surface-variant">PREDICTIVE ANALYSIS ENGINE</p>
+            </div>
+          </div>
+        </div>
+        <!-- Floating badge -->
+        <div class="absolute -top-10 -right-10 hidden lg:block glass-card p-6 rounded-2xl">
+          <div class="flex items-center gap-3">
+            <div class="bg-neon-accent/20 p-2 rounded-lg">
+              <span class="material-symbols-outlined text-neon-accent">trending_up</span>
+            </div>
+            <div>
+              <p class="text-xs text-on-surface-variant uppercase font-label-caps">Win Probability</p>
+              <p class="text-xl font-data-point text-primary">87.4%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- Features, Pricing, CTA y Footer se agregan en Task 3 -->
+</div><!-- /#landing — CIERRE TEMPORAL, se mueve en Task 3 -->
+```
+
+- [ ] **Step 2: Verificar**
+
+Abrir en navegador. Debe verse: navbar sticky con logo "ScoutAI" en `#a4e6ff`, badge "NUEVA INTELIGENCIA PREDICTIVA", H1 con "inteligencia artificial" en azul brillante, dos botones, y el mockup con badge flotante "87.4%".
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): landing navbar y hero"
+```
+
+---
+
+## Task 3: Landing — Features + Pricing + CTA + Footer
+
+**Files:**
+- Modify: `backend/test_chat.html`
+
+- [ ] **Step 1: Remover el cierre temporal `</div><!-- /#landing -->` del Task 2 y reemplazarlo con las secciones restantes + cierre correcto**
+
+Reemplazar `<!-- Features, Pricing, CTA y Footer se agregan en Task 3 -->\n</div><!-- /#landing — CIERRE TEMPORAL -->` con:
+
+```html
+  <!-- Features -->
+  <section class="py-24 bg-surface-container-lowest relative overflow-hidden">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="text-center mb-16">
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Potenciá tus decisiones</h2>
+        <p class="text-on-surface-variant max-w-xl mx-auto font-body-md">
+          Algoritmos de procesamiento de lenguaje natural y modelos estadísticos avanzados para darte una ventaja competitiva única.
+        </p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-primary text-3xl">database</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">Datos reales de SofaScore</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Acceso en tiempo real a estadísticas precisas de más de 10 ligas: Premier League, La Liga, Champions League, Copa Libertadores y más.
+          </p>
+        </div>
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-neon-accent/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-neon-accent text-3xl">psychology</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">IA avanzada</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Análisis con LLaMA 3.3 70B sobre corners, goles, tarjetas y remates. Los cálculos se hacen en Python para máxima precisión.
+          </p>
+        </div>
+        <div class="glass-card p-8 rounded-2xl border border-glass-border hover:border-primary/50 transition-all group">
+          <div class="w-14 h-14 bg-primary-container/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-primary-container text-3xl">auto_awesome_motion</span>
+          </div>
+          <h3 class="font-headline-lg text-2xl mb-4">Combinadas automáticas</h3>
+          <p class="text-on-surface-variant font-body-md">
+            Pedí la mejor combinada del día y la IA selecciona los picks con mayor confianza estadística entre todos los partidos disponibles.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="py-24 relative">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="text-center mb-16">
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Planes diseñados para vos</h2>
+        <p class="text-on-surface-variant font-body-md">Desde analistas ocasionales hasta profesionales de la industria.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <!-- Gratuito -->
+        <div class="glass-card p-10 rounded-3xl border border-glass-border flex flex-col">
+          <div class="mb-8">
+            <span class="font-label-caps text-label-caps bg-surface-variant px-3 py-1 rounded-full text-on-surface-variant">PLAN ACTUAL</span>
+            <h3 class="font-headline-lg text-3xl mt-4 mb-2">Gratuito</h3>
+            <div class="flex items-baseline gap-1">
+              <span class="text-4xl font-display-lg font-bold">$0</span>
+              <span class="text-on-surface-variant">/mes</span>
+            </div>
+          </div>
+          <ul class="space-y-4 mb-10 flex-grow">
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">2 análisis por día</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">1 combinada por día</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">check_circle</span>
+              <span class="font-body-md">Acceso a todas las ligas</span>
+            </li>
+          </ul>
+          <button class="w-full py-4 rounded-xl border border-primary text-primary font-bold hover:bg-primary/10 transition-all"
+                  onclick="openAuth('register')">Empezar ahora</button>
+        </div>
+        <!-- Pro -->
+        <div class="relative rounded-3xl p-[1px] overflow-hidden shadow-2xl"
+             style="background: linear-gradient(135deg, #a4e6ff, #00FFC2)">
+          <div class="bg-background/90 backdrop-blur-xl p-10 h-full w-full rounded-[23px] flex flex-col">
+            <div class="absolute top-6 right-6">
+              <span class="bg-primary/20 text-primary font-label-caps text-[10px] px-3 py-1 rounded-full animate-pulse">PRÓXIMAMENTE</span>
+            </div>
+            <div class="mb-8">
+              <span class="font-label-caps text-label-caps bg-primary/20 px-3 py-1 rounded-full text-primary">ELITE ACCESS</span>
+              <h3 class="font-headline-lg text-3xl mt-4 mb-2">Pro</h3>
+              <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-display-lg font-bold">Pro</span>
+                <span class="text-on-surface-variant italic">Waitlist Open</span>
+              </div>
+            </div>
+            <ul class="space-y-4 mb-10 flex-grow">
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Análisis ilimitados</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Combinadas ilimitadas</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Acceso a todas las ligas</span>
+              </li>
+              <li class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1;">star</span>
+                <span class="font-body-md">Soporte prioritario 24/7</span>
+              </li>
+            </ul>
+            <button class="w-full py-4 rounded-xl bg-primary text-on-primary font-bold glow-button opacity-60 cursor-not-allowed" disabled>
+              Muy pronto
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-24">
+    <div class="max-w-[1280px] mx-auto px-gutter">
+      <div class="glass-card p-12 md:p-20 rounded-[40px] border border-glass-border text-center relative overflow-hidden"
+           style="background: linear-gradient(135deg, rgba(164,230,255,0.1), transparent)">
+        <div class="absolute -bottom-20 -right-20 w-96 h-96 bg-primary/20 rounded-full blur-[100px] pointer-events-none"></div>
+        <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-8 max-w-2xl mx-auto">
+          ¿Listo para transformar tu análisis deportivo?
+        </h2>
+        <p class="text-on-surface-variant font-body-md mb-10 max-w-lg mx-auto">
+          Sumate a los analistas que ya confían en nuestra inteligencia artificial.
+        </p>
+        <button class="bg-primary text-on-primary px-12 py-5 rounded-2xl font-bold text-xl hover:scale-105 transition-all glow-button"
+                onclick="openAuth('register')">Empezar ahora gratis</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="w-full py-16 border-t border-outline-variant bg-background">
+    <div class="flex flex-col md:flex-row justify-between items-center px-margin-mobile md:px-gutter max-w-[1280px] mx-auto gap-8">
+      <div class="flex flex-col items-center md:items-start gap-2">
+        <span class="font-display-lg text-primary text-2xl">ScoutAI</span>
+        <p class="text-on-surface-variant font-body-md text-sm">© 2026 ScoutAI Intelligence Platform. All rights reserved.</p>
+      </div>
+      <div class="flex gap-8 flex-wrap justify-center">
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Términos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Privacidad</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Datos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">API Access</a>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- /#landing -->
+```
+
+- [ ] **Step 2: Verificar**
+
+Hacer scroll. Deben verse: 3 feature cards con Material Symbols icons, plan Gratuito con check_circle, plan Pro con borde degradado y `animate-pulse`, sección CTA con glow, footer con links.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): landing features, pricing, CTA y footer"
+```
+
+---
+
+## Task 4: Auth Overlay
+
+**Files:**
+- Modify: `backend/test_chat.html` (agregar después de `</div><!-- /#landing -->`)
+
+- [ ] **Step 1: Agregar el auth overlay**
+
+```html
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  AUTH OVERLAY                                         -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="auth-overlay" class="hidden" onclick="handleOverlayClick(event)"
+     style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;backdrop-filter:blur(8px);">
+
+  <main class="w-full max-w-[440px] flex flex-col items-center" onclick="event.stopPropagation()">
+
+    <!-- Brand header -->
+    <header class="mb-10 text-center">
+      <div class="flex items-center justify-center mb-4">
+        <span class="material-symbols-outlined text-primary text-4xl mr-2"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <h1 class="font-display-lg text-primary tracking-tighter text-4xl">ScoutAI</h1>
+      </div>
+      <p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">
+        Plataforma de Inteligencia
+      </p>
+    </header>
+
+    <!-- Card -->
+    <div class="glass-panel w-full rounded-xl p-8 flex flex-col"
+         style="box-shadow: 0 4px 24px -1px rgba(0,0,0,0.4), inset 1px 1px 0px 0px rgba(255,255,255,0.05)">
+
+      <!-- Tabs -->
+      <div class="flex border-b border-outline-variant/30 mb-8 w-full">
+        <button id="tab-login"
+                class="flex-1 py-3 font-label-caps text-label-caps transition-all duration-300 text-primary border-b-2 border-primary"
+                onclick="switchTab('login')">Iniciar sesión</button>
+        <button id="tab-register"
+                class="flex-1 py-3 font-label-caps text-label-caps transition-all duration-300 text-on-surface-variant hover:text-primary"
+                onclick="switchTab('register')">Registrarse</button>
+      </div>
+
+      <!-- Form -->
+      <form id="auth-form" class="space-y-6" onsubmit="authAction(event)">
+
+        <!-- Campo nombre (solo register) -->
+        <div id="field-nombre" class="space-y-2" style="display:none">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-nombre">NOMBRE DE USUARIO</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">badge</span>
+            <input id="auth-nombre" type="text" placeholder="Ej: Lucas" autocomplete="nickname"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-4 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+          </div>
+        </div>
+
+        <!-- Campo email -->
+        <div class="space-y-2">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-email">EMAIL</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">person</span>
+            <input id="auth-email" type="email" placeholder="nombre@ejemplo.com" autocomplete="email"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-4 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+          </div>
+        </div>
+
+        <!-- Campo contraseña -->
+        <div class="space-y-2">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-pass">CONTRASEÑA</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">lock</span>
+            <input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-12 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+            <button type="button" id="toggle-pass"
+                    class="absolute right-4 top-1/2 -translate-y-1/2 text-outline hover:text-primary transition-colors">
+              <span class="material-symbols-outlined text-lg">visibility</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mensaje error/success -->
+        <div id="auth-msg" class="hidden rounded-lg px-4 py-3 font-body-md text-sm"></div>
+
+        <!-- Submit -->
+        <button type="submit" id="auth-submit"
+                class="w-full bg-primary-container text-on-primary-fixed font-label-caps text-label-caps py-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all duration-200 glow-button">
+          <span id="btn-text">Iniciar sesión</span>
+          <span class="material-symbols-outlined text-sm">arrow_forward</span>
+        </button>
+      </form>
+
+      <!-- Social (decorativo) -->
+      <div class="mt-8">
+        <div class="relative flex items-center justify-center mb-6">
+          <div class="w-full border-t border-outline-variant/20"></div>
+          <span class="absolute bg-charcoal px-4 font-label-caps text-[10px] text-outline">O CONTINÚA CON</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
+            <span class="font-label-caps text-[11px] text-on-surface-variant">GOOGLE</span>
+          </button>
+          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
+            <span class="material-symbols-outlined text-xl text-on-surface-variant mr-1">terminal</span>
+            <span class="font-label-caps text-[11px] text-on-surface-variant">API KEY</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer links -->
+    <footer class="mt-8 flex gap-6 opacity-60 hover:opacity-100 transition-opacity">
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Términos</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Privacidad</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Soporte</a>
+    </footer>
+  </main>
+
+  <!-- Glow decorativo -->
+  <div class="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+  <div class="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-neon-accent/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+</div><!-- /#auth-overlay -->
+```
+
+- [ ] **Step 2: Verificar (remover `.hidden` temporalmente)**
+
+Cambiar `id="auth-overlay" class="hidden"` a `id="auth-overlay"`. Recargar. Debe verse: logo ScoutAI + ícono `auto_awesome`, tarjeta glass centrada con tabs "Iniciar sesión / Registrarse", campos con íconos de prefijo, botón con flecha, sección "O CONTINÚA CON". Restaurar `class="hidden"` después.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): auth overlay con glass card, tabs y campos"
+```
+
+---
+
+## Task 5: Dashboard — Sidebar + Header + Layout
+
+**Files:**
+- Modify: `backend/test_chat.html` (agregar después de `</div><!-- /#auth-overlay -->`)
+
+- [ ] **Step 1: Agregar la estructura del dashboard**
+
+```html
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DASHBOARD APP                                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="app" class="hidden" style="height:100vh;display:flex;background:#0e1417;">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" style="width:264px;flex-shrink:0;"
+         class="h-screen fixed left-0 top-0 flex flex-col p-2 bg-surface-container-low/50 backdrop-blur-2xl border-r border-glass-border z-50">
+    <div class="mb-8 px-4 py-6">
+      <h1 class="font-display-lg text-primary text-[24px] tracking-tighter">Scout Intelligence</h1>
+      <p class="font-label-caps text-[10px] text-on-surface-variant/60 uppercase mt-1">Plan Gratuito</p>
+    </div>
+
+    <nav class="flex-1 space-y-1">
+      <a class="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-4 border-primary transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">dashboard</span>
+        <span class="font-label-caps text-label-caps">Dashboard</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">settings_input_component</span>
+        <span class="font-label-caps text-label-caps">Live Match</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]" style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <span class="font-label-caps text-label-caps">AI Combos</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">history</span>
+        <span class="font-label-caps text-label-caps">History</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">settings</span>
+        <span class="font-label-caps text-label-caps">Settings</span>
+      </a>
+    </nav>
+
+    <div class="mt-auto p-4 space-y-4">
+      <button class="w-full py-3 bg-primary text-on-primary font-label-caps text-[12px] rounded-lg hover:opacity-90 active:scale-95 transition-all"
+              style="box-shadow:0 4px 12px rgba(164,230,255,0.2)">
+        Upgrade to Elite
+      </button>
+      <div class="flex flex-col gap-1 pt-4 border-t border-glass-border">
+        <a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer" href="#">
+          <span class="material-symbols-outlined text-[20px]">help</span>
+          <span class="text-[13px]">Support</span>
+        </a>
+        <button onclick="logout()"
+                class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-error transition-colors w-full text-left">
+          <span class="material-symbols-outlined text-[20px]">logout</span>
+          <span class="text-[13px]">Sign Out</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="app-main" style="margin-left:264px;flex:1;display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- Topbar -->
+    <header class="h-20 flex items-center justify-between px-gutter border-b border-glass-border bg-background/80 backdrop-blur-xl z-40 flex-shrink-0">
+      <div class="flex items-center gap-6">
+        <div class="bg-surface-container px-4 py-2 rounded-full border border-glass-border flex items-center gap-3">
+          <span class="text-[12px] font-label-caps text-on-surface-variant uppercase">Plan:</span>
+          <span class="text-[12px] font-label-caps text-primary font-bold">Gratuito</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-24 h-1.5 bg-surface-variant rounded-full overflow-hidden">
+            <div id="usage-bar" class="h-full bg-primary rounded-full transition-all duration-500"
+                 style="width:0%;box-shadow:0 0 8px #a4e6ff"></div>
+          </div>
+          <span id="usage-label" class="text-[11px] font-label-caps text-on-surface-variant">0/3 Usados</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="newChat()"
+                class="text-[12px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+          <span class="material-symbols-outlined text-[16px]">refresh</span>
+          <span class="hidden sm:inline">Nueva sesión</span>
+        </button>
+        <div class="flex items-center gap-2 px-3 py-1.5 glass-panel rounded-lg">
+          <div id="user-avatar"
+               class="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-label-caps text-primary text-[12px]">?</div>
+          <span id="user-label" class="text-[14px] font-medium text-on-surface hidden sm:block"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dashboard body: chat + widgets -->
+    <div id="dashboard-body" style="flex:1;display:flex;overflow:hidden;padding:24px;gap:24px;">
+      <!-- Chat panel y widgets se agregan en Task 6 y 7 -->
+    </div>
+
+  </main>
+</div><!-- /#app -->
+```
+
+- [ ] **Step 2: Verificar (remover `.hidden` temporalmente)**
+
+Cambiar `id="app" class="hidden"` a `id="app"`. Recargar. Debe verse: sidebar oscuro con logo, nav items, "Upgrade to Elite" button. Topbar con plan badge y barra de progreso vacía. El body principal está vacío. Restaurar `class="hidden"`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): dashboard sidebar y topbar"
+```
+
+---
+
+## Task 6: Dashboard — Chat Panel
+
+**Files:**
+- Modify: `backend/test_chat.html` (reemplazar `<!-- Chat panel y widgets... -->` dentro de `#dashboard-body`)
+
+- [ ] **Step 1: Reemplazar el comentario placeholder con el panel de chat**
+
+Reemplazar `<!-- Chat panel y widgets se agregan en Task 6 y 7 -->` con:
+
+```html
+      <!-- Chat panel -->
+      <section id="chat-col" class="glass-panel rounded-xl overflow-hidden inner-glow flex flex-col"
+               style="flex:1.5;min-width:0;">
+        <div class="p-6 border-b border-glass-border flex justify-between items-center bg-surface-container-low/30 flex-shrink-0">
+          <div>
+            <h2 class="font-headline-lg text-[20px] text-on-surface">Predictive Analysis Engine</h2>
+            <p class="text-on-surface-variant text-[13px] mt-1">Powered by ScoutAI Neural Network</p>
+          </div>
+          <span class="material-symbols-outlined text-primary"
+                style="font-variation-settings:'FILL' 1;">bolt</span>
+        </div>
+
+        <div id="chat" class="flex-1 overflow-y-auto p-6 space-y-6">
+          <div class="flex justify-start gap-4">
+            <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40">
+              <span class="material-symbols-outlined text-primary text-[20px]"
+                    style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+            </div>
+            <div class="max-w-[85%]">
+              <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+                <p class="text-on-surface text-[14px] leading-relaxed">
+                  ¡Hola! Soy ScoutAI. Podés pedirme análisis de partidos, combinadas del día, o preguntarme cuándo juega tu equipo. ¿En qué te ayudo?
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 bg-surface-container-lowest border-t border-glass-border flex-shrink-0">
+          <div class="relative">
+            <textarea id="msg-input" rows="1" placeholder="Preguntame sobre un partido..."
+                      class="w-full bg-charcoal border border-glass-border focus:border-primary rounded-xl px-6 py-4 text-on-surface text-[14px] pr-16 transition-all duration-300 resize-none focus:outline-none font-body-md"
+                      style="min-height:52px;max-height:120px;line-height:1.4;"></textarea>
+            <button id="btn-send" onclick="send()"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-primary text-background rounded-lg flex items-center justify-center active:scale-90 transition-transform"
+                    style="box-shadow:0 4px 12px rgba(164,230,255,0.2)">
+              <span class="material-symbols-outlined text-[20px]">send</span>
+            </button>
+          </div>
+          <div class="flex gap-4 mt-4">
+            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">trending_up</span> Hot Matches
+            </button>
+            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">psychology</span> High Confidence
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Placeholder widgets (Task 7 lo reemplaza) -->
+      <div id="widgets-placeholder" style="flex:1;min-width:0;"></div>
+```
+
+- [ ] **Step 2: Verificar**
+
+Con `#app` sin `.hidden`: el panel de chat debe verse a la izquierda del dashboard con header "Predictive Analysis Engine", mensaje inicial del bot, textarea e input de envío con ícono `send`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): dashboard chat panel"
+```
+
+---
+
+## Task 7: Dashboard — Widgets
+
+**Files:**
+- Modify: `backend/test_chat.html` (reemplazar `<div id="widgets-placeholder"...>`)
+
+- [ ] **Step 1: Reemplazar el placeholder con los 3 widgets**
+
+Reemplazar `<div id="widgets-placeholder" style="flex:1;min-width:0;"></div>` con:
+
+```html
+      <!-- Widgets column -->
+      <section id="widgets-col" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding-right:4px;">
+
+        <!-- Widget 1: Corners Density -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">flag</span>
+              Corners Density
+            </h3>
+            <span id="widget-corners-avg" class="text-[12px] text-neon-accent font-data-point">—</span>
+          </div>
+          <div id="widget-corners-bars" class="flex items-end gap-1.5 px-2" style="height:80px;"></div>
+          <p class="text-[9px] text-on-surface-variant uppercase mt-2 px-1">Promedio de corners por partido</p>
+        </div>
+
+        <!-- Widget 2: Shots on Target -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">sports_soccer</span>
+              Shots on Target
+            </h3>
+            <span id="widget-shots-label" class="text-[12px] text-on-surface-variant font-data-point">—</span>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span id="widget-shots-team1-name" class="text-on-surface-variant">Local</span>
+                <span id="widget-shots-team1-val" class="text-on-surface">—</span>
+              </div>
+              <div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden">
+                <div id="widget-shots-bar1" class="h-full bg-primary rounded-full transition-all duration-700" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span id="widget-shots-team2-name" class="text-on-surface-variant">Visitante</span>
+                <span id="widget-shots-team2-val" class="text-on-surface">—</span>
+              </div>
+              <div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden">
+                <div id="widget-shots-bar2" class="h-full bg-neon-accent rounded-full transition-all duration-700" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 3: Discipline Index -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">style</span>
+              Discipline Index
+            </h3>
+            <div class="flex gap-2">
+              <div class="w-3 h-4 bg-[#FFD700] rounded-sm"></div>
+              <div class="w-3 h-4 bg-[#FF4B4B] rounded-sm"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-6">
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <svg class="w-full h-full" style="transform:rotate(-90deg)">
+                <circle cx="48" cy="48" r="40" fill="transparent" stroke="#2f3639" stroke-width="8"/>
+                <circle id="widget-disc-circle" cx="48" cy="48" r="40" fill="transparent"
+                        stroke="#a4e6ff" stroke-width="8"
+                        stroke-dasharray="251.2" stroke-dashoffset="251.2"
+                        style="transition:stroke-dashoffset 0.7s ease"/>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span id="widget-disc-pct" class="text-[18px] font-data-point text-on-surface">—</span>
+                <span class="text-[8px] uppercase text-on-surface-variant">Risk</span>
+              </div>
+            </div>
+            <p id="widget-disc-text" class="text-[12px] text-on-surface leading-tight">
+              Sin datos aún. Analizá un partido para ver el índice de disciplina.
+            </p>
+          </div>
+        </div>
+
+      </section>
+```
+
+- [ ] **Step 2: Verificar**
+
+Los 3 widgets deben verse en estado vacío: barras de corners con altura mínima y opacidad baja, shot bars al 0%, donut mostrando "—" y texto placeholder. Layout dos columnas visible.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): widgets de estadísticas (corners, shots, discipline)"
+```
+
+---
+
+## Task 8: JavaScript completo
+
+**Files:**
+- Modify: `backend/test_chat.html` (reemplazar `</body></html>` con el bloque script completo + cierre)
+
+- [ ] **Step 1: Agregar el script antes de `</body>`**
+
+Reemplazar `</body>\n</html>` con:
+
+```html
+<script>
+  // ── Constantes ────────────────────────────────────────────────────────
+  const SUPABASE_URL  = "https://vyjkjyciwifrbfuhbyrk.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5amtqeWNpd2lmcmJmdWhieXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzg4OTUsImV4cCI6MjA5NTY1NDg5NX0.Nu3mAGcUnBpxuMwIDXB2nBmxfk06KMVVgGqfzwOr4Q4";
+  const BASE_URL      = "https://scoutai-b7gn.onrender.com";
+
+  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  let _session    = null;
+  let _authMode   = "login";
+  let _usageCount = 0;
+
+  // ── Auth state ────────────────────────────────────────────────────────
+  _sb.auth.onAuthStateChange((event, session) => {
+    _session = session;
+    if (session) {
+      const nombre = session.user.user_metadata?.nombre || session.user.email.split("@")[0];
+      enterApp(nombre);
+    } else {
+      exitApp();
+    }
+  });
+
+  function enterApp(nombre) {
+    document.getElementById("landing").classList.add("hidden");
+    document.getElementById("auth-overlay").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    const avatar = document.getElementById("user-avatar");
+    if (avatar) avatar.textContent = nombre.charAt(0).toUpperCase();
+    document.getElementById("user-label").textContent = nombre;
+    _usageCount = 0;
+    updateUsageBar();
+  }
+
+  function exitApp() {
+    document.getElementById("app").classList.add("hidden");
+    document.getElementById("auth-overlay").classList.add("hidden");
+    document.getElementById("landing").classList.remove("hidden");
+  }
+
+  // ── Auth overlay ──────────────────────────────────────────────────────
+  function openAuth(mode) {
+    switchTab(mode);
+    document.getElementById("auth-overlay").classList.remove("hidden");
+  }
+
+  function closeAuth() {
+    document.getElementById("auth-overlay").classList.add("hidden");
+    clearAuthMsg();
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById("auth-overlay")) closeAuth();
+  }
+
+  function switchTab(mode) {
+    _authMode = mode;
+    const tl = document.getElementById("tab-login");
+    const tr = document.getElementById("tab-register");
+    // Login tab
+    tl.classList.toggle("text-primary",           mode === "login");
+    tl.classList.toggle("border-b-2",             mode === "login");
+    tl.classList.toggle("border-primary",         mode === "login");
+    tl.classList.toggle("text-on-surface-variant", mode !== "login");
+    // Register tab
+    tr.classList.toggle("text-primary",           mode === "register");
+    tr.classList.toggle("border-b-2",             mode === "register");
+    tr.classList.toggle("border-primary",         mode === "register");
+    tr.classList.toggle("text-on-surface-variant", mode !== "register");
+
+    document.getElementById("btn-text").textContent =
+      mode === "login" ? "Iniciar sesión" : "Registrarse";
+    document.getElementById("field-nombre").style.display =
+      mode === "register" ? "block" : "none";
+    clearAuthMsg();
+  }
+
+  function showAuthMsg(text, type) {
+    const el = document.getElementById("auth-msg");
+    el.textContent = text;
+    el.className = type === "error"
+      ? "rounded-lg px-4 py-3 font-body-md text-sm bg-[#2d1212] border border-[#8b2020] text-[#ff8a80]"
+      : "rounded-lg px-4 py-3 font-body-md text-sm bg-[#0d2b0d] border border-[#2e7d32] text-[#a5d6a7]";
+    el.classList.remove("hidden");
+  }
+
+  function clearAuthMsg() {
+    const el = document.getElementById("auth-msg");
+    el.textContent = "";
+    el.classList.add("hidden");
+  }
+
+  async function authAction(e) {
+    if (e) e.preventDefault();
+    const email  = document.getElementById("auth-email").value.trim();
+    const pass   = document.getElementById("auth-pass").value;
+    const nombre = document.getElementById("auth-nombre").value.trim();
+
+    if (!email || !pass) { showAuthMsg("Completá email y contraseña.", "error"); return; }
+    if (_authMode === "register" && !nombre) { showAuthMsg("Completá tu nombre.", "error"); return; }
+
+    const btn = document.getElementById("auth-submit");
+    btn.disabled = true;
+    document.getElementById("btn-text").textContent = "Cargando...";
+    clearAuthMsg();
+
+    try {
+      let result;
+      if (_authMode === "login") {
+        result = await _sb.auth.signInWithPassword({ email, password: pass });
+      } else {
+        result = await _sb.auth.signUp({
+          email, password: pass,
+          options: { data: { nombre } }
+        });
+        if (!result.error && result.data?.user?.identities?.length === 0) {
+          showAuthMsg("Ese email ya está registrado. Iniciá sesión.", "error"); return;
+        }
+        if (!result.error && !result.data?.session) {
+          switchTab("login");
+          showAuthMsg("¡Cuenta creada! Revisá tu email para confirmar.", "success"); return;
+        }
+      }
+      if (result.error) showAuthMsg(result.error.message, "error");
+    } finally {
+      btn.disabled = false;
+      document.getElementById("btn-text").textContent =
+        _authMode === "login" ? "Iniciar sesión" : "Registrarse";
+    }
+  }
+
+  // Password visibility toggle
+  const toggleBtn = document.getElementById("toggle-pass");
+  const passInput = document.getElementById("auth-pass");
+  const toggleIcon = toggleBtn.querySelector(".material-symbols-outlined");
+  toggleBtn.addEventListener("mousedown", () => { passInput.type = "text";     toggleIcon.textContent = "visibility_off"; });
+  toggleBtn.addEventListener("mouseup",   () => { passInput.type = "password"; toggleIcon.textContent = "visibility"; });
+  toggleBtn.addEventListener("mouseleave",() => { passInput.type = "password"; toggleIcon.textContent = "visibility"; });
+
+  // Enter en campos del form
+  ["auth-email","auth-pass","auth-nombre"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") authAction(null); });
+  });
+
+  async function logout() { await _sb.auth.signOut(); }
+
+  // ── Barra de uso ──────────────────────────────────────────────────────
+  const USAGE_MAX = 3;
+
+  function updateUsageBar() {
+    const pct = Math.min((_usageCount / USAGE_MAX) * 100, 100);
+    const bar = document.getElementById("usage-bar");
+    const lbl = document.getElementById("usage-label");
+    if (bar) bar.style.width = pct + "%";
+    if (lbl) lbl.textContent = `${_usageCount}/${USAGE_MAX} Usados`;
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────────────
+  let sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+
+  const msgInput = document.getElementById("msg-input");
+  msgInput.addEventListener("input", () => {
+    msgInput.style.height = "auto";
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
+  });
+  msgInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  function newChat() {
+    sessionId = "s_" + Math.random().toString(36).slice(2, 8);
+    document.getElementById("chat").innerHTML = `
+      <div class="flex justify-start gap-4">
+        <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40">
+          <span class="material-symbols-outlined text-primary text-[20px]"
+                style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        </div>
+        <div class="max-w-[85%]">
+          <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+            <p class="text-on-surface text-[14px] leading-relaxed">Nueva sesión iniciada. ¿En qué te ayudo?</p>
+          </div>
+        </div>
+      </div>`;
+    resetWidgets();
+  }
+
+  function scrollToBottom() {
+    const c = document.getElementById("chat");
+    if (c) c.scrollTop = c.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function addUserBubble(text) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = "flex justify-end";
+    div.innerHTML = `<div class="max-w-[80%] bg-surface-variant p-4 rounded-2xl rounded-tr-none text-on-surface text-[14px]">${escapeHtml(text)}</div>`;
+    chat.appendChild(div);
+    scrollToBottom();
+  }
+
+  function addBotBubble(type, content, header = null) {
+    const chat = document.getElementById("chat");
+    const wrap = document.createElement("div");
+    wrap.className = "flex justify-start gap-4";
+
+    let innerHtml = "";
+    if (type === "analysis" && header) {
+      const paras = content.replace(/\n[ \t]+\n/g, "\n\n")
+        .split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const parasHtml = paras.map(p => {
+        const cls = p.startsWith("⚠️")
+          ? "text-[12.5px] italic text-on-surface-variant py-2 border-t border-glass-border"
+          : "text-[14px] py-2 border-t border-glass-border first:border-0";
+        return `<div class="${cls}">${escapeHtml(p)}</div>`;
+      }).join("");
+      innerHtml = `
+        <div class="glass-panel p-5 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+          <div class="text-[13px] text-primary border-b border-glass-border pb-2 mb-3 whitespace-pre-wrap">${escapeHtml(header)}</div>
+          <div>${parasHtml}</div>
+        </div>`;
+    } else if (type === "combinada") {
+      innerHtml = `
+        <div class="glass-panel p-5 rounded-2xl rounded-tl-none border-l-2 text-[14px] leading-relaxed text-on-surface whitespace-pre-wrap"
+             style="border-left-color:#00FFC2">${escapeHtml(content)}</div>`;
+    } else {
+      innerHtml = `
+        <div class="glass-panel p-4 rounded-2xl rounded-tl-none border-l-2 border-l-primary">
+          <p class="text-on-surface text-[14px] leading-relaxed">${escapeHtml(content)}</p>
+        </div>`;
+    }
+
+    wrap.innerHTML = `
+      <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/40 flex-shrink-0">
+        <span class="material-symbols-outlined text-primary text-[20px]"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+      </div>
+      <div class="max-w-[85%] min-w-0">${innerHtml}</div>`;
+    chat.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function addStatus(msg) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.id = "current-status";
+    div.className = "flex justify-start gap-4 items-center";
+    div.innerHTML = `
+      <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 animate-pulse">
+        <span class="material-symbols-outlined text-primary text-[20px]">psychology</span>
+      </div>
+      <div class="glass-panel px-6 py-4 rounded-full flex items-center gap-2">
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay:-0.15s"></div>
+        <div class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay:-0.3s"></div>
+        <span id="status-text" class="text-[13px] text-on-surface-variant ml-2">${escapeHtml(msg)}</span>
+      </div>`;
+    chat.appendChild(div);
+    scrollToBottom();
+  }
+
+  function updateStatus(msg) {
+    const el = document.getElementById("status-text");
+    if (el) el.textContent = msg;
+    scrollToBottom();
+  }
+
+  function removeStatus() {
+    const el = document.getElementById("current-status");
+    if (el) el.remove();
+  }
+
+  async function send() {
+    const input   = document.getElementById("msg-input");
+    const btnSend = document.getElementById("btn-send");
+    const message = input.value.trim();
+    if (!message || !_session) return;
+
+    input.value = ""; input.style.height = "auto";
+    btnSend.disabled = true;
+    addUserBubble(message);
+    addStatus("💬 Conectando...");
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token || "";
+    const tzOffsetHours = -new Date().getTimezoneOffset() / 60;
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "X-Timezone-Offset": String(new Date().getTimezoneOffset()),
+        },
+        body: JSON.stringify({ message, session_id: sessionId, tz_offset_hours: tzOffsetHours })
+      });
+
+      if (!res.ok) {
+        removeStatus();
+        const detail = await res.json().catch(() => ({ detail: res.statusText }));
+        const errMsg = res.status === 429
+          ? "⏳ " + detail.detail
+          : `❌ Error ${res.status}: ${detail.detail || res.statusText}`;
+        addBotBubble("chat", errMsg);
+        return;
+      }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "", curEvent = "message", streamDone = false;
+
+      while (!streamDone) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          const clean = line.endsWith("\r") ? line.slice(0, -1) : line;
+          if (clean.startsWith("event: ")) { curEvent = clean.slice(7).trim(); continue; }
+          if (!clean.startsWith("data: ")) continue;
+          let data; try { data = JSON.parse(clean.slice(6)); } catch { continue; }
+
+          if (curEvent === "status") {
+            updateStatus(data.message);
+          } else if (curEvent === "response") {
+            removeStatus();
+            if (data.type === "analysis") {
+              addBotBubble("analysis", data.content, data.header);
+              _usageCount++;
+              updateUsageBar();
+              parseAnalysisForWidgets((data.header || "") + "\n" + (data.content || ""));
+            } else if (data.type === "combinada") {
+              addBotBubble("combinada", data.content);
+              _usageCount++;
+              updateUsageBar();
+            } else {
+              addBotBubble("chat", data.content);
+            }
+          } else if (curEvent === "error") {
+            removeStatus();
+            addBotBubble("chat", "❌ " + data.message);
+            streamDone = true;
+          } else if (curEvent === "done") {
+            removeStatus(); streamDone = true;
+          }
+          curEvent = "message";
+        }
+      }
+    } catch (err) {
+      removeStatus();
+      addBotBubble("chat", "❌ No se pudo conectar: " + err.message);
+    } finally {
+      btnSend.disabled = false;
+      input.focus();
+    }
+  }
+
+  // ── Widgets ───────────────────────────────────────────────────────────
+  function resetWidgets() {
+    document.getElementById("widget-corners-avg").textContent = "—";
+    renderCornerBars([]);
+    document.getElementById("widget-shots-label").textContent = "—";
+    document.getElementById("widget-shots-team1-name").textContent = "Local";
+    document.getElementById("widget-shots-team1-val").textContent  = "—";
+    document.getElementById("widget-shots-team2-name").textContent = "Visitante";
+    document.getElementById("widget-shots-team2-val").textContent  = "—";
+    document.getElementById("widget-shots-bar1").style.width = "0%";
+    document.getElementById("widget-shots-bar2").style.width = "0%";
+    document.getElementById("widget-disc-pct").textContent = "—";
+    document.getElementById("widget-disc-circle").setAttribute("stroke-dashoffset", "251.2");
+    document.getElementById("widget-disc-text").textContent =
+      "Sin datos aún. Analizá un partido para ver el índice de disciplina.";
+  }
+
+  function renderCornerBars(values) {
+    const container = document.getElementById("widget-corners-bars");
+    container.innerHTML = "";
+    const isEmpty = values.length === 0;
+    const display = isEmpty
+      ? Array(7).fill(0)
+      : (values.length >= 7 ? values.slice(-7) : [...Array(7 - values.length).fill(0), ...values]);
+    const max = isEmpty ? 1 : Math.max(...display, 1);
+
+    display.forEach(v => {
+      const pct = isEmpty ? 10 : Math.max((v / max) * 100, 4);
+      const isHighest = !isEmpty && v === Math.max(...values);
+      const bar = document.createElement("div");
+      bar.style.cssText = `flex:1;border-radius:2px 2px 0 0;height:${pct}%;transition:height 0.7s ease;`;
+      bar.className = isHighest
+        ? "bg-primary/60 hover:bg-primary"
+        : "bg-surface-variant/40 hover:bg-primary/40";
+      if (isEmpty) bar.style.opacity = "0.3";
+      container.appendChild(bar);
+    });
+  }
+
+  function parseAnalysisForWidgets(text) {
+    if (!text) return;
+
+    // ── Corners ──────────────────────────────────────────
+    const cornerPatterns = [
+      /(\d+(?:\.\d+)?)\s*corners?\s+promedio/i,
+      /promedio[^.]*?(\d+(?:\.\d+)?)\s*corners?/i,
+      /corners?[:\s]+(\d+(?:\.\d+)?)/i,
+      /(\d+(?:\.\d+)?)\s+corners?\s+por\s+partido/i,
+    ];
+    let cornerAvg = null;
+    for (const re of cornerPatterns) {
+      const m = text.match(re);
+      if (m) { cornerAvg = parseFloat(m[1]); break; }
+    }
+    if (cornerAvg !== null) {
+      document.getElementById("widget-corners-avg").textContent = cornerAvg.toFixed(1) + " avg";
+      renderCornerBars([cornerAvg]);
+    }
+
+    // ── Shots ─────────────────────────────────────────────
+    const teamMatch = text.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})\s+vs\.?\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,20})/i);
+    if (teamMatch) {
+      document.getElementById("widget-shots-team1-name").textContent = teamMatch[1].trim().split(/\s+/)[0];
+      document.getElementById("widget-shots-team2-name").textContent = teamMatch[2].trim().split(/\s+/)[0];
+    }
+
+    const shotsHome = [
+      /remates?[^.]*?(?:local|casa|home)[^.]*?(\d+)/i,
+      /(\d+)\s+remates?[^.]*?(?:en\s+casa|local)/i,
+    ];
+    const shotsAway = [
+      /remates?[^.]*?(?:visitante|visita|away)[^.]*?(\d+)/i,
+      /(\d+)\s+remates?[^.]*?(?:visitante|visita)/i,
+    ];
+    let shots1 = null, shots2 = null;
+    for (const re of shotsHome) { const m = text.match(re); if (m) { shots1 = parseInt(m[1]); break; } }
+    for (const re of shotsAway) { const m = text.match(re); if (m) { shots2 = parseInt(m[1]); break; } }
+
+    if (shots1 !== null || shots2 !== null) {
+      const s1 = shots1 ?? 0, s2 = shots2 ?? 0;
+      const maxS = Math.max(s1, s2, 1);
+      document.getElementById("widget-shots-team1-val").textContent = s1;
+      document.getElementById("widget-shots-team2-val").textContent = s2;
+      document.getElementById("widget-shots-bar1").style.width = ((s1 / maxS) * 100) + "%";
+      document.getElementById("widget-shots-bar2").style.width = ((s2 / maxS) * 100) + "%";
+      document.getElementById("widget-shots-label").textContent =
+        `${s1 + s2} total`;
+    }
+
+    // ── Discipline ────────────────────────────────────────
+    const riskPatterns = [
+      /riesgo[:\s]+(\d+)\s*%/i,
+      /(\d+)\s*%\s+(?:de\s+)?riesgo/i,
+      /probabilidad[^.]*?tarjeta[^.]*?(\d+)\s*%/i,
+      /(\d+)\s*%[^.]*?tarjeta/i,
+    ];
+    let riskPct = null;
+    for (const re of riskPatterns) { const m = text.match(re); if (m) { riskPct = parseInt(m[1]); break; } }
+    if (riskPct === null) {
+      const yellow = (text.match(/tarjetas?\s+amarillas?/gi) || []).length;
+      const red    = (text.match(/tarjetas?\s+rojas?/gi) || []).length;
+      if (yellow + red > 0) riskPct = Math.min(40 + yellow * 15 + red * 25, 95);
+    }
+
+    if (riskPct !== null) {
+      const offset = 251.2 - (riskPct / 100) * 251.2;
+      document.getElementById("widget-disc-pct").textContent = riskPct + "%";
+      document.getElementById("widget-disc-circle").setAttribute("stroke-dashoffset", offset.toFixed(1));
+      document.getElementById("widget-disc-text").textContent = riskPct >= 70
+        ? `Alta probabilidad de tarjeta amarilla (${riskPct}% riesgo).`
+        : riskPct >= 40
+        ? `Riesgo moderado de tarjeta (${riskPct}%).`
+        : `Bajo riesgo disciplinario (${riskPct}%).`;
+    }
+  }
+
+  // ── Scroll reveal (landing) ───────────────────────────────────────────
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("opacity-100");
+        entry.target.classList.remove("opacity-0", "translate-y-8");
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll("#landing section").forEach(section => {
+    section.classList.add("transition-all", "duration-700", "opacity-0", "translate-y-8");
+    revealObserver.observe(section);
+  });
+</script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Verificar flujo completo**
+
+1. Abrir `backend/test_chat.html` (o `https://scoutai-b7gn.onrender.com`)
+2. Landing se ve con nuevo diseño glassmorphism
+3. Hacer scroll — secciones aparecen con reveal animado
+4. Clic "Get Started" → auth overlay aparece sobre la landing
+5. Login con cuenta existente → entra al dashboard
+6. Dashboard muestra sidebar con nav items, topbar con nombre y barra de uso en 0/3
+7. Escribir "análisis Manchester City vs Arsenal" → burbuja del usuario aparece, 3 puntos pulsantes, respuesta con borde azul y header
+8. Los widgets se actualizan si la respuesta contiene datos de corners/shots/tarjetas
+9. Clic "↺ Nueva sesión" → chat se limpia, widgets resetean a estado vacío
+10. Clic "Sign Out" → vuelve a landing
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/test_chat.html
+git commit -m "feat(frontend): JS completo — auth, chat SSE, widgets, scroll reveal"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage:**
+- ✅ Landing: navbar, hero, features, pricing, CTA, footer
+- ✅ Auth overlay: glass card, tabs, campos con íconos, toggle password, Supabase login+register
+- ✅ Dashboard sidebar: logo, 5 nav items, Upgrade button, Sign Out funcional
+- ✅ Dashboard header: plan badge, barra de uso, avatar, nombre, nueva sesión
+- ✅ Chat panel: header, burbujas rediseñadas, loading dots, input + send icon
+- ✅ Widgets vacíos al inicio y reset en newChat()
+- ✅ parseAnalysisForWidgets() con corners, shots y discipline
+- ✅ Widgets actualizados al recibir `type: "analysis"`
+- ✅ Scroll reveal en landing
+- ✅ Mobile responsive via media query en Task 1 CSS
+
+**Placeholders:** Ninguno. Todo el código está presente en cada step.
+
+**Type consistency:**
+- `openAuth(mode)` → definida en Task 8, usada en Tasks 2, 3, 4
+- `switchTab(mode)` → llamada en Task 4 HTML (onclick) y Task 8 JS
+- `handleOverlayClick(e)` → Task 4 HTML + Task 8 JS
+- `authAction(e)` → Task 4 form onsubmit + Task 8 JS
+- `logout()` → Task 5 sidebar + Task 8 JS
+- `newChat()` → Task 5 topbar + Task 8 JS
+- `send()` → Task 6 btn-send + Task 8 JS
+- `parseAnalysisForWidgets(text)` → llamada en Task 8 `send()`, definida en Task 8
+- `resetWidgets()` → llamada en `newChat()` Task 8, definida en Task 8
+- `renderCornerBars(values)` → llamada en `resetWidgets()` y `parseAnalysisForWidgets()`, definida en Task 8
+- `escapeHtml(text)` → definida en Task 8, usada en `addUserBubble`, `addBotBubble`, `addStatus`
