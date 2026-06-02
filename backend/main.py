@@ -170,6 +170,30 @@ _FOCO_LABEL = {
 
 _COPAS = {"Champions League", "Copa Libertadores", "Copa Sudamericana"}
 
+_MAX_MSG_LEN = 600
+
+# Patrones que intentan sobrescribir instrucciones del sistema
+_RE_INJECTION = re.compile(
+    r'(ignor[aá](r|me|nos)?\s+(todo|instrucciones|sistema|previo)|'
+    r'ignore\s+(all|previous|system)|'
+    r'olvid[aá](r|te|nos)?\s+(todo|instrucciones)|'
+    r'eres?\s+(ahora|un\s+nuevo)|you\s+are\s+now|'
+    r'modo\s+developer|developer\s+mode|'
+    r'print\s+(api|secret|key|password|token)|'
+    r'ACTION:\s*(ANALIZAR|COMBINADA|BUSCAR))',
+    re.IGNORECASE,
+)
+
+
+def _sanitizar_mensaje(msg: str) -> str:
+    """Limita longitud y neutraliza patrones de prompt injection."""
+    msg = msg[:_MAX_MSG_LEN]
+    if _RE_INJECTION.search(msg):
+        # Reemplaza el patrón con texto inofensivo en lugar de rechazar,
+        # para no romper el flujo pero sí neutralizar la instrucción.
+        msg = _RE_INJECTION.sub("[consulta no válida]", msg)
+    return msg
+
 
 # ── Core processing (runs in a thread, sends events via queue) ────────
 
@@ -197,6 +221,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         # Bug #0d: fijar TZ del usuario para todo este request.
         engine.set_request_tz_offset(tz_offset_hours)
 
+        message = _sanitizar_mensaje(message)
         history = session_store.get_history(session_id, user_id)
 
         es_confirmacion = engine._es_respuesta_a_aclaracion(history)

@@ -55,6 +55,9 @@ def get_history(session_id: str, user_id: str = "default") -> list:
     with _lock:
         if session_id not in _cache:
             history, stored_uid = _load_from_db(session_id)
+            # Si la sesión pertenece a otro usuario, no compartir historial
+            if stored_uid != "default" and user_id != "default" and stored_uid != user_id:
+                return []
             resolved_uid = user_id if user_id != "default" else stored_uid
             _cache[session_id] = {
                 "history":     history,
@@ -65,7 +68,10 @@ def get_history(session_id: str, user_id: str = "default") -> list:
             s = _cache[session_id]
             s["last_access"] = datetime.now()
             if user_id != "default":
-                s["user_id"] = user_id
+                if s["user_id"] == "default":
+                    s["user_id"] = user_id  # reclamar sesión anónima
+                elif s["user_id"] != user_id:
+                    return []  # sesión de otro usuario → historial vacío
         return _cache[session_id]["history"]
 
 

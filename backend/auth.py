@@ -58,6 +58,8 @@ def verificar_token(authorization: str | None) -> str:
         return "default"
 
     if not authorization or not authorization.startswith("Bearer "):
+        if _SUPABASE_URL:
+            print("[auth] Request sin token — usando user_id='default'")
         return "default"
 
     token = authorization.removeprefix("Bearer ").strip()
@@ -83,7 +85,9 @@ def verificar_token(authorization: str | None) -> str:
         else:
             # Simétrico — proyectos legacy (HS256/HS512)
             if not _JWT_SECRET:
-                return "default"
+                raise ValueError(
+                    "Token HS256 recibido pero SUPABASE_JWT_SECRET no está configurado"
+                )
             payload = jwt.decode(token, _JWT_SECRET,
                                  algorithms=["HS256", "HS512"],
                                  options={"verify_aud": False})
