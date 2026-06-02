@@ -601,8 +601,86 @@
         </div>
       </section>
 
-      <!-- Placeholder widgets (Task 7 lo reemplaza) -->
-      <div id="widgets-placeholder" style="flex:1;min-width:0;"></div>
+      <!-- Widgets column -->
+      <section id="widgets-col" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding-right:4px;">
+
+        <!-- Widget 1: Corners Density -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">flag</span>
+              Corners Density
+            </h3>
+            <span id="widget-corners-avg" class="text-[12px] text-neon-accent font-data-point">—</span>
+          </div>
+          <div id="widget-corners-bars" class="flex items-end gap-1.5 px-2" style="height:80px;"></div>
+          <p class="text-[9px] text-on-surface-variant uppercase mt-2 px-1">Promedio de corners por partido</p>
+        </div>
+
+        <!-- Widget 2: Shots on Target -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">sports_soccer</span>
+              Shots on Target
+            </h3>
+            <span id="widget-shots-label" class="text-[12px] text-on-surface-variant font-data-point">—</span>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span id="widget-shots-team1-name" class="text-on-surface-variant">Local</span>
+                <span id="widget-shots-team1-val" class="text-on-surface">—</span>
+              </div>
+              <div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden">
+                <div id="widget-shots-bar1" class="h-full bg-primary rounded-full transition-all duration-700" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span id="widget-shots-team2-name" class="text-on-surface-variant">Visitante</span>
+                <span id="widget-shots-team2-val" class="text-on-surface">—</span>
+              </div>
+              <div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden">
+                <div id="widget-shots-bar2" class="h-full bg-neon-accent rounded-full transition-all duration-700" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 3: Discipline Index -->
+        <div class="glass-panel p-5 rounded-xl inner-glow">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-label-caps text-[14px] text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]">style</span>
+              Discipline Index
+            </h3>
+            <div class="flex gap-2">
+              <div class="w-3 h-4 bg-[#FFD700] rounded-sm"></div>
+              <div class="w-3 h-4 bg-[#FF4B4B] rounded-sm"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-6">
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <svg class="w-full h-full" style="transform:rotate(-90deg)">
+                <circle cx="48" cy="48" r="40" fill="transparent" stroke="#2f3639" stroke-width="8"/>
+                <circle id="widget-disc-circle" cx="48" cy="48" r="40" fill="transparent"
+                        stroke="#a4e6ff" stroke-width="8"
+                        stroke-dasharray="251.2" stroke-dashoffset="251.2"
+                        style="transition:stroke-dashoffset 0.7s ease"/>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span id="widget-disc-pct" class="text-[18px] font-data-point text-on-surface">—</span>
+                <span class="text-[8px] uppercase text-on-surface-variant">Risk</span>
+              </div>
+            </div>
+            <p id="widget-disc-text" class="text-[12px] text-on-surface leading-tight">
+              Sin datos aún. Analizá un partido para ver el índice de disciplina.
+            </p>
+          </div>
+        </div>
+
+      </section>
     </div>
 
   </main>
