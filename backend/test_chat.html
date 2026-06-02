@@ -347,5 +347,119 @@
 
 </div><!-- /#landing -->
 
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  AUTH OVERLAY                                         -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="auth-overlay" class="hidden" onclick="handleOverlayClick(event)"
+     style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;backdrop-filter:blur(8px);">
+
+  <main class="w-full max-w-[440px] flex flex-col items-center" onclick="event.stopPropagation()">
+
+    <!-- Brand header -->
+    <header class="mb-10 text-center">
+      <div class="flex items-center justify-center mb-4">
+        <span class="material-symbols-outlined text-primary text-4xl mr-2"
+              style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <h1 class="font-display-lg text-primary tracking-tighter text-4xl">ScoutAI</h1>
+      </div>
+      <p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">
+        Plataforma de Inteligencia
+      </p>
+    </header>
+
+    <!-- Card -->
+    <div class="glass-panel w-full rounded-xl p-8 flex flex-col"
+         style="box-shadow: 0 4px 24px -1px rgba(0,0,0,0.4), inset 1px 1px 0px 0px rgba(255,255,255,0.05)">
+
+      <!-- Tabs -->
+      <div class="flex border-b border-outline-variant/30 mb-8 w-full">
+        <button id="tab-login"
+                class="flex-1 py-3 font-label-caps text-label-caps transition-all duration-300 text-primary border-b-2 border-primary"
+                onclick="switchTab('login')">Iniciar sesión</button>
+        <button id="tab-register"
+                class="flex-1 py-3 font-label-caps text-label-caps transition-all duration-300 text-on-surface-variant hover:text-primary"
+                onclick="switchTab('register')">Registrarse</button>
+      </div>
+
+      <!-- Form -->
+      <form id="auth-form" class="space-y-6" onsubmit="authAction(event)">
+
+        <!-- Campo nombre (solo register) -->
+        <div id="field-nombre" class="space-y-2" style="display:none">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-nombre">NOMBRE DE USUARIO</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">badge</span>
+            <input id="auth-nombre" type="text" placeholder="Ej: Lucas" autocomplete="nickname"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-4 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+          </div>
+        </div>
+
+        <!-- Campo email -->
+        <div class="space-y-2">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-email">EMAIL</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">person</span>
+            <input id="auth-email" type="email" placeholder="nombre@ejemplo.com" autocomplete="email"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-4 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+          </div>
+        </div>
+
+        <!-- Campo contraseña -->
+        <div class="space-y-2">
+          <label class="font-label-caps text-label-caps text-on-surface-variant block ml-1" for="auth-pass">CONTRASEÑA</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-lg transition-colors group-focus-within:text-primary">lock</span>
+            <input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password"
+                   class="w-full bg-charcoal border border-outline-variant/50 rounded-lg py-4 pl-12 pr-12 text-on-surface font-data-point text-sm focus:outline-none focus:border-primary-container transition-all duration-200" />
+            <button type="button" id="toggle-pass"
+                    class="absolute right-4 top-1/2 -translate-y-1/2 text-outline hover:text-primary transition-colors">
+              <span class="material-symbols-outlined text-lg">visibility</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mensaje error/success -->
+        <div id="auth-msg" class="hidden rounded-lg px-4 py-3 font-body-md text-sm"></div>
+
+        <!-- Submit -->
+        <button type="submit" id="auth-submit"
+                class="w-full bg-primary-container text-on-primary-fixed font-label-caps text-label-caps py-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all duration-200 glow-button">
+          <span id="btn-text">Iniciar sesión</span>
+          <span class="material-symbols-outlined text-sm">arrow_forward</span>
+        </button>
+      </form>
+
+      <!-- Social (decorativo) -->
+      <div class="mt-8">
+        <div class="relative flex items-center justify-center mb-6">
+          <div class="w-full border-t border-outline-variant/20"></div>
+          <span class="absolute bg-charcoal px-4 font-label-caps text-[10px] text-outline">O CONTINÚA CON</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
+            <span class="font-label-caps text-[11px] text-on-surface-variant">GOOGLE</span>
+          </button>
+          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
+            <span class="material-symbols-outlined text-xl text-on-surface-variant mr-1">terminal</span>
+            <span class="font-label-caps text-[11px] text-on-surface-variant">API KEY</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer links -->
+    <footer class="mt-8 flex gap-6 opacity-60 hover:opacity-100 transition-opacity">
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Términos</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Privacidad</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Soporte</a>
+    </footer>
+  </main>
+
+  <!-- Glow decorativo -->
+  <div class="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+  <div class="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-neon-accent/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+</div><!-- /#auth-overlay -->
+
 </body>
 </html>
