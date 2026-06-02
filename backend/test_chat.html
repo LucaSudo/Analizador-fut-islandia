@@ -461,5 +461,101 @@
   <div class="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-neon-accent/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
 </div><!-- /#auth-overlay -->
 
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DASHBOARD APP                                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="app" class="hidden" style="height:100vh;display:flex;background:#0e1417;">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" style="width:264px;flex-shrink:0;"
+         class="h-screen fixed left-0 top-0 flex flex-col p-2 bg-surface-container-low/50 backdrop-blur-2xl border-r border-glass-border z-50">
+    <div class="mb-8 px-4 py-6">
+      <h1 class="font-display-lg text-primary text-[24px] tracking-tighter">Scout Intelligence</h1>
+      <p class="font-label-caps text-[10px] text-on-surface-variant/60 uppercase mt-1">Plan Gratuito</p>
+    </div>
+
+    <nav class="flex-1 space-y-1">
+      <a class="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-4 border-primary transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">dashboard</span>
+        <span class="font-label-caps text-label-caps">Dashboard</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">settings_input_component</span>
+        <span class="font-label-caps text-label-caps">Live Match</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]" style="font-variation-settings:'FILL' 1;">auto_awesome</span>
+        <span class="font-label-caps text-label-caps">AI Combos</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">history</span>
+        <span class="font-label-caps text-label-caps">History</span>
+      </a>
+      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-[20px]">settings</span>
+        <span class="font-label-caps text-label-caps">Settings</span>
+      </a>
+    </nav>
+
+    <div class="mt-auto p-4 space-y-4">
+      <button class="w-full py-3 bg-primary text-on-primary font-label-caps text-[12px] rounded-lg hover:opacity-90 active:scale-95 transition-all"
+              style="box-shadow:0 4px 12px rgba(164,230,255,0.2)">
+        Upgrade to Elite
+      </button>
+      <div class="flex flex-col gap-1 pt-4 border-t border-glass-border">
+        <a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer" href="#">
+          <span class="material-symbols-outlined text-[20px]">help</span>
+          <span class="text-[13px]">Support</span>
+        </a>
+        <button onclick="logout()"
+                class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-error transition-colors w-full text-left">
+          <span class="material-symbols-outlined text-[20px]">logout</span>
+          <span class="text-[13px]">Sign Out</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="app-main" style="margin-left:264px;flex:1;display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- Topbar -->
+    <header class="h-20 flex items-center justify-between px-gutter border-b border-glass-border bg-background/80 backdrop-blur-xl z-40 flex-shrink-0">
+      <div class="flex items-center gap-6">
+        <div class="bg-surface-container px-4 py-2 rounded-full border border-glass-border flex items-center gap-3">
+          <span class="text-[12px] font-label-caps text-on-surface-variant uppercase">Plan:</span>
+          <span class="text-[12px] font-label-caps text-primary font-bold">Gratuito</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-24 h-1.5 bg-surface-variant rounded-full overflow-hidden">
+            <div id="usage-bar" class="h-full bg-primary rounded-full transition-all duration-500"
+                 style="width:0%;box-shadow:0 0 8px #a4e6ff"></div>
+          </div>
+          <span id="usage-label" class="text-[11px] font-label-caps text-on-surface-variant">0/3 Usados</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="newChat()"
+                class="text-[12px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+          <span class="material-symbols-outlined text-[16px]">refresh</span>
+          <span class="hidden sm:inline">Nueva sesión</span>
+        </button>
+        <div class="flex items-center gap-2 px-3 py-1.5 glass-panel rounded-lg">
+          <div id="user-avatar"
+               class="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-label-caps text-primary text-[12px]">?</div>
+          <span id="user-label" class="text-[14px] font-medium text-on-surface hidden sm:block"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dashboard body: chat + widgets -->
+    <div id="dashboard-body" style="flex:1;display:flex;overflow:hidden;padding:24px;gap:24px;">
+      <!-- Chat panel y widgets se agregan en Task 6 y 7 -->
+    </div>
+
+  </main>
+</div><!-- /#app -->
+
 </body>
 </html>
