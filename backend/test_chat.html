@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html class="dark" lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,733 +7,113 @@
   <meta name="description" content="ScoutAI analiza partidos de fútbol con IA en segundos. Predicciones de corners, goles y tarjetas para Premier League, La Liga, Copa Libertadores y más. Gratis." />
   <link rel="canonical" href="https://scoutai-b7gn.onrender.com/" />
   <meta property="og:title" content="ScoutAI — Análisis de fútbol con IA" />
-  <meta property="og:description" content="Predicciones de corners, goles y tarjetas con datos reales de SofaScore. Más de 10 ligas. Gratis." />
+  <meta property="og:description" content="Predicciones de corners, goles y tarjetas con datos reales de SofaScore." />
   <meta property="og:url" content="https://scoutai-b7gn.onrender.com/" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="ScoutAI — Análisis de fútbol con IA" />
   <meta name="twitter:description" content="Predicciones con IA para más de 10 ligas. Gratis." />
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background":               "#0e1417",
+            "charcoal":                 "#121214",
+            "surface-container":        "#1a2123",
+            "surface-container-low":    "#161d1f",
+            "surface-container-lowest": "#090f12",
+            "surface-container-high":   "#242b2e",
+            "surface-variant":          "#2f3639",
+            "primary":                  "#a4e6ff",
+            "primary-container":        "#00d1ff",
+            "primary-fixed-dim":        "#4cd6ff",
+            "on-primary":               "#003543",
+            "on-primary-fixed":         "#001f28",
+            "on-primary-container":     "#00566a",
+            "neon-accent":              "#00FFC2",
+            "on-surface":               "#dde3e7",
+            "on-surface-variant":       "#bbc9cf",
+            "on-background":            "#dde3e7",
+            "outline-variant":          "#3c494e",
+            "outline":                  "#859399",
+            "secondary":                "#c9c6c5",
+            "secondary-container":      "#4a4949",
+            "error":                    "#ffb4ab",
+            "error-container":          "#93000a",
+            "glass-border":             "rgba(255,255,255,0.1)"
+          },
+          fontFamily: {
+            "display-lg":  ["Sora", "sans-serif"],
+            "headline-lg": ["Sora", "sans-serif"],
+            "body-md":     ["Inter", "sans-serif"],
+            "label-caps":  ["JetBrains Mono", "monospace"],
+            "data-point":  ["JetBrains Mono", "monospace"]
+          },
+          fontSize: {
+            "display-lg":  ["64px", { lineHeight: "72px",  letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-lg": ["40px", { lineHeight: "48px",  letterSpacing: "-0.01em", fontWeight: "600" }],
+            "headline-sm": ["32px", { lineHeight: "40px",  fontWeight: "600" }],
+            "body-md":     ["16px", { lineHeight: "24px",  fontWeight: "400" }],
+            "label-caps":  ["12px", { lineHeight: "16px",  letterSpacing: "0.1em",  fontWeight: "500" }],
+            "data-point":  ["18px", { lineHeight: "24px",  fontWeight: "600" }]
+          },
+          spacing: {
+            "gutter":        "24px",
+            "margin-mobile": "16px"
+          }
+        }
+      }
+    }
+  </script>
+
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg:           #080d14;
-      --bg-card:      #0f1923;
-      --bg-elevated:  #162032;
-      --border:       #1e3a5f;
-      --accent:       #38bdf8;
-      --accent-glow:  rgba(56,189,248,0.12);
-      --text:         #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted:   #64748b;
-      --green:        #22c55e;
-      --radius:       12px;
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
     }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
+    .glass-card {
+      background: rgba(18, 18, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
     }
-
+    .glass-panel {
+      background: rgba(18, 18, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .inner-glow { box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05); }
+    .glow-button { box-shadow: 0 0 20px rgba(0, 209, 255, 0.2); }
+    .hero-glow  { text-shadow: 0 0 30px rgba(0, 209, 255, 0.5); }
+    .bg-grid {
+      background-image:
+        linear-gradient(to right,  rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
     .hidden { display: none !important; }
+    ::-webkit-scrollbar       { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0e1417; }
+    ::-webkit-scrollbar-thumb { background: #2f3639; border-radius: 10px; }
 
-    /* ── LANDING ──────────────────────────────────────────── */
-    #landing { min-height: 100vh; display: flex; flex-direction: column; }
-
-    .nav {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 18px 40px;
-      border-bottom: 1px solid var(--border);
-      position: sticky; top: 0;
-      background: rgba(8,13,20,0.96);
-      backdrop-filter: blur(8px);
-      z-index: 10;
-    }
-    .nav-logo { font-size: 20px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
-    .nav-logo span { color: var(--text); }
-    .nav-actions { display: flex; gap: 10px; }
-
-    .btn-outline {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary); padding: 8px 18px;
-      border-radius: 8px; font-size: 14px; cursor: pointer; transition: all 0.15s;
-    }
-    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-
-    .btn-primary {
-      background: var(--accent); border: none; color: #000;
-      padding: 8px 18px; border-radius: 8px; font-size: 14px;
-      font-weight: 700; cursor: pointer; transition: opacity 0.15s;
-    }
-    .btn-primary:hover { opacity: 0.88; }
-
-    /* Hero */
-    .hero {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      text-align: center; padding: 80px 24px 60px;
-    }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--accent-glow);
-      border: 1px solid rgba(56,189,248,0.28);
-      color: var(--accent); font-size: 13px;
-      padding: 5px 16px; border-radius: 20px; margin-bottom: 28px;
-    }
-    .hero h1 {
-      font-size: clamp(30px, 5vw, 54px); font-weight: 800;
-      line-height: 1.15; letter-spacing: -1px;
-      max-width: 780px; margin-bottom: 20px;
-    }
-    .hero h1 .accent { color: var(--accent); }
-    .hero p {
-      font-size: 18px; color: var(--text-secondary);
-      max-width: 540px; line-height: 1.65; margin-bottom: 40px;
-    }
-    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-    .btn-hero {
-      background: var(--accent); color: #000; border: none;
-      padding: 14px 32px; border-radius: 10px; font-size: 16px;
-      font-weight: 700; cursor: pointer; transition: all 0.15s;
-    }
-    .btn-hero:hover { opacity: 0.88; transform: translateY(-1px); }
-    .btn-hero-ghost {
-      background: transparent; color: var(--text);
-      border: 1px solid var(--border); padding: 14px 32px;
-      border-radius: 10px; font-size: 16px; cursor: pointer; transition: all 0.15s;
-    }
-    .btn-hero-ghost:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* Features */
-    .features {
-      padding: 70px 40px; max-width: 1080px;
-      margin: 0 auto; width: 100%;
-    }
-    .section-label {
-      text-align: center; font-size: 12px;
-      text-transform: uppercase; letter-spacing: 2px;
-      color: var(--accent); margin-bottom: 10px;
-    }
-    .section-title {
-      text-align: center; font-size: 26px;
-      font-weight: 700; margin-bottom: 44px;
-    }
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-      gap: 18px;
-    }
-    .feature-card {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 28px;
-      transition: border-color 0.2s;
-    }
-    .feature-card:hover { border-color: rgba(56,189,248,0.35); }
-    .feature-icon { font-size: 28px; margin-bottom: 14px; }
-    .feature-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-    .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
-
-    /* Plans */
-    .plans {
-      padding: 60px 40px; max-width: 780px;
-      margin: 0 auto; width: 100%;
-    }
-    .plans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-    .plan-card {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 30px;
-    }
-    .plan-card.featured {
-      border-color: var(--accent);
-      background: linear-gradient(145deg, var(--bg-elevated), var(--bg-card));
-    }
-    .plan-tag {
-      display: inline-block; background: var(--accent); color: #000;
-      font-size: 10px; font-weight: 700; padding: 3px 10px;
-      border-radius: 20px; margin-bottom: 14px;
-      text-transform: uppercase; letter-spacing: 0.5px;
-    }
-    .plan-name { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-    .plan-price { font-size: 30px; font-weight: 800; color: var(--accent); margin-bottom: 20px; }
-    .plan-price small { font-size: 14px; font-weight: 400; color: var(--text-muted); }
-    .plan-features { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
-    .plan-features li { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
-    .plan-features li.ok::before { content: "✓"; color: var(--green); font-weight: 700; }
-    .plan-features li.dim { color: var(--text-muted); }
-    .plan-features li.dim::before { content: "·"; color: var(--text-muted); }
-    .plan-btn {
-      width: 100%; padding: 11px; border-radius: 8px;
-      font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-    }
-    .plan-btn.cta { background: var(--accent); border: none; color: #000; }
-    .plan-btn.cta:hover { opacity: 0.88; }
-    .plan-btn.dim { background: transparent; border: 1px solid var(--border); color: var(--text-muted); cursor: default; }
-
-    /* Footer */
-    footer {
-      text-align: center; padding: 28px 24px;
-      border-top: 1px solid var(--border);
-      color: var(--text-muted); font-size: 13px;
-    }
-
-    /* ── AUTH MODAL ────────────────────────────────────────── */
-    #auth-modal {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.65);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 200; padding: 16px;
-      backdrop-filter: blur(4px);
-    }
-    .auth-card {
-      background: var(--bg-elevated); border: 1px solid var(--border);
-      border-radius: 16px; padding: 36px;
-      width: 100%; max-width: 400px; position: relative;
-    }
-    .auth-close {
-      position: absolute; top: 14px; right: 14px;
-      background: transparent; border: none;
-      color: var(--text-muted); font-size: 18px;
-      cursor: pointer; padding: 4px 8px; border-radius: 4px;
-    }
-    .auth-close:hover { background: var(--border); color: var(--text); }
-    .auth-brand { text-align: center; font-size: 22px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
-    .auth-hint { text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 22px; }
-    .auth-tabs {
-      display: flex; background: var(--bg-card);
-      border-radius: 8px; padding: 3px; gap: 3px; margin-bottom: 18px;
-    }
-    .auth-tab {
-      flex: 1; padding: 8px; text-align: center; font-size: 13px;
-      cursor: pointer; background: transparent; border: none;
-      color: var(--text-muted); border-radius: 6px; transition: all 0.15s;
-    }
-    .auth-tab.active { background: var(--bg-elevated); color: var(--text); }
-    .auth-field { margin-bottom: 13px; }
-    .auth-field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
-    .auth-field input {
-      width: 100%; background: var(--bg-card);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px 12px; color: var(--text); font-size: 14px;
-      outline: none; transition: border-color 0.15s;
-    }
-    .auth-field input:focus { border-color: var(--accent); }
-    .auth-submit {
-      width: 100%; background: var(--accent); color: #000;
-      border: none; border-radius: 8px; padding: 12px;
-      font-size: 14px; font-weight: 700; cursor: pointer;
-      margin-top: 4px; transition: opacity 0.15s;
-    }
-    .auth-submit:hover:not(:disabled) { opacity: 0.88; }
-    .auth-submit:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
-    .auth-msg {
-      margin-top: 12px; border-radius: 8px;
-      padding: 10px 12px; font-size: 13px; display: none;
-    }
-    .auth-msg.error { background: #2d1212; border: 1px solid #8b2020; color: #ff8a80; display: block; }
-    .auth-msg.success { background: #0d2b0d; border: 1px solid #2e7d32; color: #a5d6a7; display: block; }
-
-    /* ── CHAT APP ──────────────────────────────────────────── */
-    #app { height: 100vh; display: flex; flex-direction: column; }
-
-    .topbar {
-      background: var(--bg-card); padding: 10px 20px;
-      display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    .topbar-logo { font-size: 17px; font-weight: 800; color: var(--accent); }
-    .topbar-right { display: flex; align-items: center; gap: 10px; }
-    .topbar-user { font-size: 13px; color: var(--text-secondary); }
-    .topbar-plan {
-      font-size: 11px; color: var(--text-muted);
-      background: var(--bg-elevated); border: 1px solid var(--border);
-      padding: 3px 10px; border-radius: 6px;
-    }
-    .btn-sm {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-muted); padding: 5px 11px;
-      border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s;
-    }
-    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
-    .btn-sm.danger:hover { border-color: #ef4444; color: #ef4444; }
-
-    #chat {
-      flex: 1; overflow-y: auto; padding: 20px;
-      display: flex; flex-direction: column; gap: 14px;
-    }
-    .bubble-wrap { display: flex; flex-direction: column; }
-    .bubble-wrap.user { align-items: flex-end; }
-    .bubble-wrap.bot  { align-items: flex-start; }
-    .sender-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; padding: 0 4px; }
-    .bubble-wrap.bot .sender-label { color: var(--accent); }
-    .bubble {
-      max-width: 80%; padding: 10px 14px; border-radius: 14px;
-      font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
-    }
-    .bubble-wrap.user .bubble { background: #1a3555; border-bottom-right-radius: 4px; }
-    .bubble-wrap.bot  .bubble { background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-    .bubble.analysis  { background: #07141f; border-color: #1e3a5f; }
-    .bubble.combinada { background: #071a0e; border-color: #1a4a28; }
-    .analysis-header { font-size: 13px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 10px; white-space: pre-wrap; }
-    .analysis-body { font-size: 14px; line-height: 1.65; }
-    .analysis-body .para { padding: 8px 0; }
-    .analysis-body .para + .para { border-top: 1px solid rgba(56,189,248,0.08); }
-    .analysis-body .para.warning { color: var(--text-muted); font-size: 12.5px; font-style: italic; }
-    .status-wrap { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; padding: 4px 0; }
-    .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .input-area {
-      background: var(--bg-card); border-top: 1px solid var(--border);
-      padding: 12px 20px; display: flex; gap: 10px; align-items: flex-end; flex-shrink: 0;
-    }
-    #msg-input {
-      flex: 1; background: var(--bg-elevated); border: 1px solid var(--border);
-      border-radius: 10px; padding: 10px 14px; color: var(--text);
-      font-size: 14px; outline: none; resize: none;
-      min-height: 42px; max-height: 120px;
-      font-family: inherit; line-height: 1.4; transition: border-color 0.15s;
-    }
-    #msg-input:focus { border-color: var(--accent); }
-    #msg-input::placeholder { color: var(--text-muted); }
-    #btn-send {
-      background: var(--accent); color: #000; border: none;
-      border-radius: 10px; padding: 10px 20px;
-      font-size: 14px; font-weight: 700; cursor: pointer;
-      height: 42px; transition: opacity 0.15s; white-space: nowrap;
-    }
-    #btn-send:hover:not(:disabled) { opacity: 0.88; }
-    #btn-send:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
-
-    @media (max-width: 640px) {
-      .nav { padding: 14px 20px; }
-      .hero { padding: 50px 20px 40px; }
-      .features, .plans { padding: 44px 20px; }
-      .plans-grid { grid-template-columns: 1fr; }
-      .hero h1 { font-size: 28px; }
-      .hero p { font-size: 15px; }
-      .topbar-plan { display: none; }
+    @media (max-width: 768px) {
+      #sidebar        { display: none !important; }
+      #app-main       { margin-left: 0 !important; }
+      #dashboard-body { flex-direction: column !important; }
+      #widgets-col    { max-height: 320px; }
     }
   </style>
 </head>
-<body>
+<body class="bg-background text-on-surface font-body-md overflow-x-hidden">
 
-<!-- ══════════════════════════════════════════════════════ -->
-<!--  LANDING                                              -->
-<!-- ══════════════════════════════════════════════════════ -->
-<div id="landing">
+<!-- Secciones se agregan en tasks siguientes -->
 
-  <nav class="nav">
-    <div class="nav-logo">Scout<span>AI</span></div>
-    <div class="nav-actions">
-      <button class="btn-outline" onclick="openAuth('login')">Iniciar sesión</button>
-      <button class="btn-primary" onclick="openAuth('register')">Empezar gratis</button>
-    </div>
-  </nav>
-
-  <section class="hero">
-    <div class="hero-badge">⚽ Impulsado por IA</div>
-    <h1>Análisis de fútbol con <span class="accent">inteligencia artificial</span></h1>
-    <p>Pedí predicciones sobre cualquier partido y obtené estadísticas reales analizadas por IA. Datos de SofaScore, respuestas en segundos.</p>
-    <div class="hero-actions">
-      <button class="btn-hero" onclick="openAuth('register')">Empezar gratis →</button>
-      <button class="btn-hero-ghost" onclick="openAuth('login')">Ya tengo cuenta</button>
-    </div>
-  </section>
-
-  <section class="features">
-    <p class="section-label">Funcionalidades</p>
-    <h2 class="section-title">Todo lo que necesitás para analizar</h2>
-    <div class="features-grid">
-      <div class="feature-card">
-        <div class="feature-icon">📊</div>
-        <h3>Datos reales de SofaScore</h3>
-        <p>Estadísticas de los últimos partidos de más de 10 ligas: Premier League, La Liga, Champions League, Copa Libertadores y más.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🤖</div>
-        <h3>IA avanzada</h3>
-        <p>Análisis generado con LLaMA 3.3 70B sobre corners, goles, tarjetas y remates. Los cálculos se hacen en Python para máxima precisión.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">⚡</div>
-        <h3>Combinadas automáticas</h3>
-        <p>Pedí la mejor combinada del día y la IA selecciona los picks con mayor confianza estadística entre todos los partidos disponibles.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="plans">
-    <p class="section-label">Planes</p>
-    <h2 class="section-title">Empezá gratis, escalá cuando quieras</h2>
-    <div class="plans-grid">
-      <div class="plan-card">
-        <div class="plan-name">Gratuito</div>
-        <div class="plan-price">$0 <small>/ mes</small></div>
-        <ul class="plan-features">
-          <li class="ok">2 análisis por día</li>
-          <li class="ok">1 combinada por día</li>
-          <li class="ok">Acceso a todas las ligas</li>
-          <li class="ok">Historial de predicciones</li>
-        </ul>
-        <button class="plan-btn cta" onclick="openAuth('register')">Empezar gratis</button>
-      </div>
-      <div class="plan-card featured">
-        <div class="plan-tag">Próximamente</div>
-        <div class="plan-name">Pro</div>
-        <div class="plan-price">Pronto <small></small></div>
-        <ul class="plan-features">
-          <li class="ok">Análisis ilimitados</li>
-          <li class="ok">Combinadas ilimitadas</li>
-          <li class="ok">Acceso a todas las ligas</li>
-          <li class="ok">Soporte prioritario</li>
-        </ul>
-        <button class="plan-btn dim" disabled>Muy pronto</button>
-      </div>
-    </div>
-  </section>
-
-  <footer>ScoutAI © 2026 — Análisis deportivo con inteligencia artificial</footer>
-</div>
-
-
-<!-- ══════════════════════════════════════════════════════ -->
-<!--  AUTH MODAL                                           -->
-<!-- ══════════════════════════════════════════════════════ -->
-<div id="auth-modal" class="hidden" onclick="handleOverlayClick(event)">
-  <div class="auth-card">
-    <button class="auth-close" onclick="closeAuth()">✕</button>
-    <div class="auth-brand">ScoutAI</div>
-    <div class="auth-hint" id="auth-hint">Iniciá sesión para continuar</div>
-
-    <div class="auth-tabs">
-      <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">Iniciar sesión</button>
-      <button class="auth-tab"        id="tab-register" onclick="switchTab('register')">Registrarse</button>
-    </div>
-
-    <div class="auth-field" id="field-nombre" style="display:none">
-      <label>Nombre de usuario</label>
-      <input id="auth-nombre" type="text" placeholder="Ej: Lucas" autocomplete="nickname" />
-    </div>
-    <div class="auth-field">
-      <label>Email</label>
-      <input id="auth-email" type="email" placeholder="tu@email.com" autocomplete="email" />
-    </div>
-    <div class="auth-field">
-      <label>Contraseña</label>
-      <input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password" />
-    </div>
-
-    <div id="auth-msg" class="auth-msg"></div>
-    <button class="auth-submit" id="auth-submit" onclick="authAction()">Iniciar sesión</button>
-  </div>
-</div>
-
-
-<!-- ══════════════════════════════════════════════════════ -->
-<!--  CHAT APP                                             -->
-<!-- ══════════════════════════════════════════════════════ -->
-<div id="app" class="hidden">
-  <div class="topbar">
-    <div class="topbar-logo">ScoutAI</div>
-    <div class="topbar-right">
-      <span class="topbar-plan">Plan Gratuito · 2 análisis / 1 combinada por día</span>
-      <button class="btn-sm" onclick="newChat()">↺ Nueva sesión</button>
-      <span class="topbar-user" id="user-label"></span>
-      <button class="btn-sm danger" onclick="logout()">Salir</button>
-    </div>
-  </div>
-
-  <div id="chat">
-    <div class="bubble-wrap bot">
-      <div class="sender-label">🤖 ScoutAI</div>
-      <div class="bubble">¡Hola! Soy ScoutAI. Podés pedirme análisis de partidos, combinadas del día, o preguntarme cuándo juega tu equipo. ¿En qué te ayudo?</div>
-    </div>
-  </div>
-
-  <div class="input-area">
-    <textarea id="msg-input" rows="1" placeholder="Preguntame sobre un partido..."></textarea>
-    <button id="btn-send" onclick="send()">Enviar</button>
-  </div>
-</div>
-
-
-<script>
-  const SUPABASE_URL  = "https://vyjkjyciwifrbfuhbyrk.supabase.co";
-  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5amtqeWNpd2lmcmJmdWhieXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzg4OTUsImV4cCI6MjA5NTY1NDg5NX0.Nu3mAGcUnBpxuMwIDXB2nBmxfk06KMVVgGqfzwOr4Q4";
-  const BASE_URL      = "https://scoutai-b7gn.onrender.com";
-
-  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-  let _session = null;
-  let _authMode = "login";
-
-  // ── Estado de autenticación ──────────────────────────────
-  _sb.auth.onAuthStateChange((event, session) => {
-    _session = session;
-    if (session) {
-      const nombre = session.user.user_metadata?.nombre || session.user.email.split("@")[0];
-      enterApp(nombre);
-    } else {
-      exitApp();
-    }
-  });
-
-  function enterApp(nombre) {
-    document.getElementById("landing").classList.add("hidden");
-    document.getElementById("auth-modal").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-    document.getElementById("user-label").textContent = "👤 " + nombre;
-  }
-
-  function exitApp() {
-    document.getElementById("app").classList.add("hidden");
-    document.getElementById("auth-modal").classList.add("hidden");
-    document.getElementById("landing").classList.remove("hidden");
-  }
-
-  // ── Modal de auth ────────────────────────────────────────
-  function openAuth(mode) {
-    switchTab(mode);
-    document.getElementById("auth-modal").classList.remove("hidden");
-  }
-
-  function closeAuth() {
-    document.getElementById("auth-modal").classList.add("hidden");
-    clearMsg();
-  }
-
-  function handleOverlayClick(e) {
-    if (e.target === document.getElementById("auth-modal")) closeAuth();
-  }
-
-  function switchTab(mode) {
-    _authMode = mode;
-    document.getElementById("tab-login").classList.toggle("active", mode === "login");
-    document.getElementById("tab-register").classList.toggle("active", mode === "register");
-    document.getElementById("auth-submit").textContent = mode === "login" ? "Iniciar sesión" : "Crear cuenta";
-    document.getElementById("auth-hint").textContent   = mode === "login" ? "Iniciá sesión para continuar" : "Creá tu cuenta gratis";
-    document.getElementById("field-nombre").style.display = mode === "register" ? "block" : "none";
-    clearMsg();
-  }
-
-  function showMsg(text, type) {
-    const el = document.getElementById("auth-msg");
-    el.textContent = text;
-    el.className = "auth-msg " + type;
-  }
-
-  function clearMsg() {
-    const el = document.getElementById("auth-msg");
-    el.textContent = ""; el.className = "auth-msg";
-  }
-
-  async function authAction() {
-    const email  = document.getElementById("auth-email").value.trim();
-    const pass   = document.getElementById("auth-pass").value;
-    const nombre = document.getElementById("auth-nombre").value.trim();
-
-    if (!email || !pass) { showMsg("Completá email y contraseña.", "error"); return; }
-    if (_authMode === "register" && !nombre) { showMsg("Completá tu nombre.", "error"); return; }
-
-    const btn = document.getElementById("auth-submit");
-    btn.disabled = true; btn.textContent = "Cargando..."; clearMsg();
-
-    try {
-      let result;
-      if (_authMode === "login") {
-        result = await _sb.auth.signInWithPassword({ email, password: pass });
-      } else {
-        result = await _sb.auth.signUp({ email, password: pass, options: { data: { nombre } } });
-        if (!result.error && result.data?.user?.identities?.length === 0) {
-          showMsg("Ese email ya está registrado. Iniciá sesión.", "error"); return;
-        }
-        if (!result.error && !result.data?.session) {
-          switchTab("login");
-          showMsg("¡Cuenta creada! Revisá tu email para confirmar.", "success"); return;
-        }
-      }
-      if (result.error) showMsg(result.error.message, "error");
-    } finally {
-      btn.disabled = false;
-      btn.textContent = _authMode === "login" ? "Iniciar sesión" : "Crear cuenta";
-    }
-  }
-
-  async function logout() { await _sb.auth.signOut(); }
-
-  ["auth-email","auth-pass","auth-nombre"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") authAction(); });
-  });
-
-  // ── Chat ─────────────────────────────────────────────────
-  let sessionId = "s_" + Math.random().toString(36).slice(2, 8);
-
-  const input = document.getElementById("msg-input");
-  input.addEventListener("input", () => {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 120) + "px";
-  });
-  input.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  });
-
-  function newChat() {
-    sessionId = "s_" + Math.random().toString(36).slice(2, 8);
-    document.getElementById("chat").innerHTML = `
-      <div class="bubble-wrap bot">
-        <div class="sender-label">🤖 ScoutAI</div>
-        <div class="bubble">Nueva sesión iniciada. ¿En qué te ayudo?</div>
-      </div>`;
-  }
-
-  function scrollToBottom() {
-    const c = document.getElementById("chat");
-    c.scrollTop = c.scrollHeight;
-  }
-
-  function addBubble(who, type, content, header = null) {
-    const chat = document.getElementById("chat");
-    const wrap = document.createElement("div");
-    wrap.className = `bubble-wrap ${who}`;
-
-    const label = document.createElement("div");
-    label.className = "sender-label";
-    label.textContent = who === "user" ? "👤 Vos" : "🤖 ScoutAI";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-
-    if (type === "analysis" && header) {
-      bubble.classList.add("analysis");
-      const hdr = document.createElement("div");
-      hdr.className = "analysis-header";
-      hdr.textContent = header;
-      bubble.appendChild(hdr);
-      const body = document.createElement("div");
-      body.className = "analysis-body";
-      content.replace(/\n[ \t]+\n/g, "\n\n").split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(para => {
-        const div = document.createElement("div");
-        div.className = "para" + (para.startsWith("⚠️") ? " warning" : "");
-        div.textContent = para;
-        body.appendChild(div);
-      });
-      bubble.appendChild(body);
-    } else if (type === "combinada") {
-      bubble.classList.add("combinada");
-      bubble.textContent = content;
-    } else {
-      bubble.textContent = content;
-    }
-
-    wrap.appendChild(label);
-    wrap.appendChild(bubble);
-    chat.appendChild(wrap);
-    scrollToBottom();
-    return bubble;
-  }
-
-  function addStatus(msg) {
-    const chat = document.getElementById("chat");
-    const wrap = document.createElement("div");
-    wrap.className = "status-wrap"; wrap.id = "current-status";
-    wrap.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
-    chat.appendChild(wrap);
-    scrollToBottom();
-  }
-
-  function updateStatus(msg) {
-    const el = document.getElementById("current-status");
-    if (el) el.querySelector("span").textContent = msg;
-    scrollToBottom();
-  }
-
-  function removeStatus() {
-    const el = document.getElementById("current-status");
-    if (el) el.remove();
-  }
-
-  async function send() {
-    const msgInput = document.getElementById("msg-input");
-    const btnSend  = document.getElementById("btn-send");
-    const message  = msgInput.value.trim();
-    if (!message || !_session) return;
-
-    msgInput.value = ""; msgInput.style.height = "auto";
-    btnSend.disabled = true;
-    addBubble("user", "chat", message);
-    addStatus("💬 Conectando...");
-
-    const { data: { session } } = await _sb.auth.getSession();
-    const token = session?.access_token || "";
-
-    try {
-      // tz_offset_hours: -getTimezoneOffset()/60 → ARG=-3, MX=-6, ESP=+1/+2
-      const tzOffsetHours = -new Date().getTimezoneOffset() / 60;
-      const res = await fetch(`${BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-          "X-Timezone-Offset": String(new Date().getTimezoneOffset()),
-        },
-        body: JSON.stringify({ message, session_id: sessionId, tz_offset_hours: tzOffsetHours })
-      });
-
-      if (!res.ok) {
-        removeStatus();
-        const detail = await res.json().catch(() => ({ detail: res.statusText }));
-        const msg = res.status === 429
-          ? "⏳ " + detail.detail
-          : `❌ Error ${res.status}: ${detail.detail || res.statusText}`;
-        addBubble("bot", "chat", msg);
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "", curEvent = "message", streamDone = false;
-
-      while (!streamDone) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          const clean = line.endsWith("\r") ? line.slice(0, -1) : line;
-          if (clean.startsWith("event: ")) { curEvent = clean.slice(7).trim(); continue; }
-          if (!clean.startsWith("data: ")) continue;
-          let data; try { data = JSON.parse(clean.slice(6)); } catch { continue; }
-
-          if (curEvent === "status") {
-            updateStatus(data.message);
-          } else if (curEvent === "response") {
-            removeStatus();
-            if (data.type === "analysis") addBubble("bot", "analysis", data.content, data.header);
-            else if (data.type === "combinada") addBubble("bot", "combinada", data.content);
-            else addBubble("bot", "chat", data.content);
-          } else if (curEvent === "error") {
-            removeStatus();
-            addBubble("bot", "chat", "❌ " + data.message);
-            streamDone = true;
-          } else if (curEvent === "done") {
-            removeStatus(); streamDone = true;
-          }
-          curEvent = "message";
-        }
-      }
-    } catch (err) {
-      removeStatus();
-      addBubble("bot", "chat", "❌ No se pudo conectar: " + err.message);
-    } finally {
-      btnSend.disabled = false;
-      msgInput.focus();
-    }
-  }
-</script>
 </body>
 </html>
