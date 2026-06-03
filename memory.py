@@ -68,12 +68,40 @@ def cargar_memoria(user_id: str = None) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Helpers de cálculo para nuevos campos de predicción
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _prob_desde_total(total: float) -> float:
+    """Conversión rough: total esperado → probabilidad de que ocurra al menos 1."""
+    return round(total / (total + 1), 4)
+
+
+def _calcular_edge(probabilidad_modelo: float | None, cuota: float | None) -> float | None:
+    if probabilidad_modelo is None or cuota is None:
+        return None
+    prob_implicita = 1.0 / cuota
+    return round((probabilidad_modelo - prob_implicita) * 100, 1)
+
+
+def _calcular_ganancia(acerto: bool | None, cuota: float | None) -> float | None:
+    if acerto is None or cuota is None:
+        return None
+    return round(cuota - 1, 4) if acerto else -1.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Guardar predicción
 # ─────────────────────────────────────────────────────────────────────────────
 
 def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
                        evento_id=None, liga_id=None, temporada_id=None,
-                       user_id: str = "default"):
+                       user_id: str = "default",
+                       probabilidad_modelo: float | None = None,
+                       linea_recomendada: str | None = None,
+                       confianza: str | None = None,
+                       cuota: float | None = None,
+                       edge: float | None = None,
+                       ganancia: float | None = None):
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # Si hay evento_id y ya existe esa combinación evento+foco+user → actualizar
@@ -88,8 +116,13 @@ def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
             if res.data:
                 row_id = res.data[0]["id"]
                 db.table("predicciones").update({
-                    "prediccion": prediccion,
-                    "fecha":      fecha,
+                    "prediccion":          prediccion,
+                    "fecha":               fecha,
+                    "probabilidad_modelo": probabilidad_modelo,
+                    "linea_recomendada":   linea_recomendada,
+                    "confianza":           confianza,
+                    "edge":                edge,
+                    "ganancia":            ganancia,
                 }).eq("id", row_id).execute()
                 print(f"↩️  Predicción actualizada (evento {evento_id}, foco '{foco}')")
                 return
@@ -99,17 +132,23 @@ def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
     # Nueva predicción
     try:
         db.table("predicciones").insert({
-            "fecha":          fecha,
-            "equipo1":        equipo1,
-            "equipo2":        equipo2,
-            "foco":           foco,
-            "prediccion":     prediccion,
-            "evento_id":      evento_id,
-            "liga_id":        liga_id,
-            "temporada_id":   temporada_id,
-            "resultado_real": None,
-            "acerto":         None,
-            "user_id":        user_id,
+            "fecha":               fecha,
+            "equipo1":             equipo1,
+            "equipo2":             equipo2,
+            "foco":                foco,
+            "prediccion":          prediccion,
+            "evento_id":           evento_id,
+            "liga_id":             liga_id,
+            "temporada_id":        temporada_id,
+            "resultado_real":      None,
+            "acerto":              None,
+            "user_id":             user_id,
+            "probabilidad_modelo": probabilidad_modelo,
+            "linea_recomendada":   linea_recomendada,
+            "confianza":           confianza,
+            "cuota":               cuota,
+            "edge":                edge,
+            "ganancia":            ganancia,
         }).execute()
     except Exception as e:
         print(f"⚠️  Supabase error al guardar predicción: {e}")
@@ -430,13 +469,16 @@ def verificar_predicciones(sesion):
                 continue
 
             # ── Obtener datos y calcular acierto ────────────────────
-            resultado = _obtener_stats_evento(sesion, evento_id)
-            acerto    = _determinar_acerto(pred["prediccion"], pred["foco"], resultado)
+            resultado  = _obtener_stats_evento(sesion, evento_id)
+            acerto     = _determinar_acerto(pred["prediccion"], pred["foco"], resultado)
+            cuota_pred = pred.get("cuota")
+            ganancia   = _calcular_ganancia(acerto, cuota_pred)
 
             db.table("predicciones").update({
                 "resultado_real": resultado,
                 "acerto":         acerto,
                 "evento_id":      evento_id,   # persist si vino del lookup
+                "ganancia":       ganancia,
             }).eq("id", pred["id"]).execute()
 
             actualizadas += 1

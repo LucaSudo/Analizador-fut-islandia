@@ -831,6 +831,35 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 "widgets": _extraer_widget_data(equipo1, equipo2, lineas_py, prom_eq1, prom_eq2),
             })
 
+            # ── Extraer stats del análisis para persistir ─────────────
+            _prob_mod = _linea_rec = _conf_val = None
+
+            if foco_lower != "completo":
+                _entry = lineas_py.get(foco_lower)
+                if _entry:
+                    from memory import _prob_desde_total
+                    _prob_mod  = _prob_desde_total(_entry[0])
+                    _linea_rec = _entry[2]
+                    _conf_val  = _entry[3]
+            else:
+                _goles_e = lineas_py.get("goles")
+                if _goles_e:
+                    from memory import _prob_desde_total
+                    _prob_mod  = _prob_desde_total(_goles_e[0])
+                    _linea_rec = _goles_e[2]
+                    _conf_val  = _goles_e[3]
+
+            # BTTS como fallback de probabilidad cuando no hay línea directa
+            if _prob_mod is None and foco_lower in ("goles", "completo"):
+                _b1 = prom_eq1.get("btts_score")
+                _b2 = prom_eq2.get("btts_score")
+                if _b1 is not None and _b2 is not None:
+                    _prob_mod = round(min(_b1 * _b2, 0.95), 4)
+
+            # cuota/edge quedan None hasta que se implemente el ingreso de cuotas
+            _cuota = None
+            _edge  = None
+
             try:
                 engine.guardar_prediccion(
                     equipo1, equipo2, foco, analisis_limpio,
@@ -838,6 +867,11 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     liga_id=liga_info["id"],
                     temporada_id=liga_info["temporada"],
                     user_id=user_id,
+                    probabilidad_modelo=_prob_mod,
+                    linea_recomendada=_linea_rec,
+                    confianza=_conf_val,
+                    cuota=_cuota,
+                    edge=_edge,
                 )
             except Exception as _save_err:
                 _safe_print(f"[warn] guardar_prediccion falló: {_save_err}")
