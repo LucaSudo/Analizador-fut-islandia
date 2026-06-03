@@ -102,3 +102,69 @@ def test_fuerza_rival_calcula_visitante_correctamente():
         result = _calcular_fuerza_rival_ligera(sesion, "Visitante FC", 1, 1, 10)
     assert result["attack"]  == 3.0
     assert result["defense"] == 1.0
+
+
+# ── precomputar_stats_equipo — decaimiento temporal ───────────────────────────
+
+import time as _time_mod
+from engine import precomputar_stats_equipo
+
+
+def _make_partido_completo(home, away, gh, ga, dias_atras=0):
+    """Evento mínimo para precomputar_stats_equipo."""
+    ts = int(_time_mod.time()) - dias_atras * 86400
+    return {
+        "id": abs(hash(f"{home}{away}{ts}")) or 1,
+        "homeTeam": {"name": home},
+        "awayTeam": {"name": away},
+        "homeScore": {"current": gh, "period1": gh // 2, "period2": gh - gh // 2},
+        "awayScore": {"current": ga, "period1": ga // 2, "period2": ga - ga // 2},
+        "status": {"type": "finished"},
+        "startTimestamp": ts,
+        "roundInfo": {"round": 10},
+    }
+
+
+def test_precomputar_promedios_son_ponderados():
+    """Partido reciente (0 días) debe pesar más que partido viejo (60 días)."""
+    equipo = "Ponderado FC"
+    partidos = [
+        _make_partido_completo(equipo, "RivalP A", 0, 0, dias_atras=0),   # reciente, 0 goles
+        _make_partido_completo(equipo, "RivalP B", 4, 0, dias_atras=60),  # viejo, 4 goles
+    ]
+    sesion = MagicMock()
+    fuerza_rival = {"attack": 1.2, "defense": 1.2}
+
+    with patch("engine.obtener_partidos_equipo", return_value=partidos), \
+         patch("engine._calcular_fuerza_rival_ligera", return_value=fuerza_rival), \
+         patch("engine.obtener_estadisticas", return_value={}):
+        _, promedios = precomputar_stats_equipo(sesion, equipo, 1, 1, 10, n=2)
+
+    # Promedio simple sería 2.0, pero el partido reciente (0 goles) pesa más
+    assert promedios.get("goles") is not None
+    assert promedios["goles"] < 2.0, f"Esperado < 2.0, got {promedios['goles']}"
+
+
+def test_precomputar_expone_attack_force_y_defense_force():
+    equipo = "Forces FC"
+    partidos = [_make_partido_completo(equipo, "RivalF A", 2, 1, dias_atras=5)]
+    sesion = MagicMock()
+
+    with patch("engine.obtener_partidos_equipo", return_value=partidos), \
+         patch("engine._calcular_fuerza_rival_ligera", return_value={"attack": 1.5, "defense": 1.0}), \
+         patch("engine.obtener_estadisticas", return_value={}):
+        _, promedios = precomputar_stats_equipo(sesion, equipo, 1, 1, 10, n=1)
+
+    assert "attack_force" in promedios
+    assert "defense_force" in promedios
+    assert "league_avg_goals" in promedios
+    assert promedios["attack_force"] > 0
+    assert promedios["defense_force"] > 0
+
+
+def test_precomputar_sin_partidos_retorna_promedios_vacios():
+    sesion = MagicMock()
+    with patch("engine.obtener_partidos_equipo", return_value=[]):
+        ctx, promedios = precomputar_stats_equipo(sesion, "Fantasma FC", 1, 1, 10, n=15)
+    assert promedios == {}
+    assert "FANTASMA FC" in ctx.upper()

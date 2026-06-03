@@ -787,8 +787,36 @@ def calcular_1x2(xg1: float, xg2: float, max_goles: int = 8) -> tuple:
     return p_local, p_empate, p_visitante
 
 
-def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=5):
-    partidos     = obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n)
+def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=15):
+    partidos = obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n)
+
+    if not partidos:
+        return f"ESTADÍSTICAS DE {nombre_equipo.upper()} (sin datos disponibles)", {}
+
+    ahora  = datetime.utcnow().timestamp()
+    _tz_h  = get_tz_offset_hours()
+
+    # ── Fase 1: fuerza de rivales (solo scores, sin stats) ───────────────────
+    rival_data: list[tuple] = []
+    for e in partidos:
+        home_name = e.get("homeTeam", {}).get("name", "")
+        away_name = e.get("awayTeam", {}).get("name", "")
+        es_local  = nombre_equipo.lower() in home_name.lower()
+        rival     = away_name if es_local else home_name
+        rf = _calcular_fuerza_rival_ligera(
+            sesion, rival, liga_id, temporada_id, rondas_totales, n=5
+        )
+        rival_data.append((e, es_local, rival, rf))
+
+    # ── Fase 2: promedios de liga como referencia para normalizar ────────────
+    _DEFAULT_AVG   = 1.2
+    rival_attacks  = [rf["attack"]  for _, _, _, rf in rival_data]
+    rival_defenses = [rf["defense"] for _, _, _, rf in rival_data]
+    league_avg_attack  = sum(rival_attacks)  / len(rival_attacks)  if rival_attacks  else _DEFAULT_AVG
+    league_avg_defense = sum(rival_defenses) / len(rival_defenses) if rival_defenses else _DEFAULT_AVG
+
+    # ── Fase 3: acumular stats ponderadas ────────────────────────────────────
+    # Cada acumulador guarda (valor, peso) → _weighted_avg al final
     acum         = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
     acum_against = {f"{p}_{s}": [] for p, s in _STATS_A_PRECOMPUTAR}
     goles = []; goles_against = []
@@ -796,36 +824,51 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
     goles_2h = []; goles_against_2h = []
     refs = []
 
-    for e in partidos:
-        home = e["homeTeam"]["name"]; away = e["awayTeam"]["name"]
-        es_local = nombre_equipo.lower() in home.lower()
-        ronda = e.get("roundInfo", {}).get("round", "?")
+    for e, es_local, rival, rf in rival_data:
+        home_name = e.get("homeTeam", {}).get("name", "")
+        away_name = e.get("awayTeam", {}).get("name", "")
+        ronda     = e.get("roundInfo", {}).get("round", "?")
+
+        # Decaimiento temporal: e^(-λ * días_atrás)
+        ts       = e.get("startTimestamp", ahora)
+        days_ago = max(0.0, (ahora - ts) / 86400.0)
+        t_w      = math.exp(-_LAMBDA_DECAY * days_ago)
+
+        # Factor de rival (clippeado a [0.3, 3.0])
+        # Para stats generadas: rival que defiende bien → más mérito → peso mayor
+        rival_hardness = max(0.3, min(3.0, league_avg_defense / max(rf["defense"], 0.1)))
+        # Para stats concedidas: rival que ataca bien → muestra más representativa
+        rival_pressure = max(0.3, min(3.0, rf["attack"] / max(league_avg_attack, 0.1)))
+
+        w_attack  = t_w * rival_hardness
+        w_defense = t_w * rival_pressure
 
         gh = e.get("homeScore", {}).get("current")
         ga = e.get("awayScore", {}).get("current")
         if gh is not None and ga is not None:
-            goles.append(gh if es_local else ga)
-            goles_against.append(ga if es_local else gh)
+            goles.append((float(gh if es_local else ga), w_attack))
+            goles_against.append((float(ga if es_local else gh), w_defense))
 
         gh1 = e.get("homeScore", {}).get("period1")
         ga1 = e.get("awayScore", {}).get("period1")
         gh2 = e.get("homeScore", {}).get("period2")
         ga2 = e.get("awayScore", {}).get("period2")
         if gh1 is not None and ga1 is not None:
-            goles_1h.append(gh1 if es_local else ga1)
-            goles_against_1h.append(ga1 if es_local else gh1)
+            goles_1h.append((float(gh1 if es_local else ga1), w_attack))
+            goles_against_1h.append((float(ga1 if es_local else gh1), w_defense))
         if gh2 is not None and ga2 is not None:
-            goles_2h.append(gh2 if es_local else ga2)
-            goles_against_2h.append(ga2 if es_local else gh2)
+            goles_2h.append((float(gh2 if es_local else ga2), w_attack))
+            goles_against_2h.append((float(ga2 if es_local else gh2), w_defense))
 
-        # #0m: usar UTC + offset del user (consistente con resto del sistema).
-        if e.get("startTimestamp"):
-            _ts = e["startTimestamp"]
-            _tz_h = get_tz_offset_hours()
-            fecha_str = (datetime.utcfromtimestamp(_ts) + timedelta(hours=_tz_h)).strftime("%d/%m/%Y")
-        else:
-            fecha_str = "?"
-        refs.append(f"{fecha_str} R{ronda}: {home} {gh}-{ga} {away} ({'local' if es_local else 'visitante'})")
+        fecha_str = (
+            (datetime.utcfromtimestamp(ts) + timedelta(hours=_tz_h)).strftime("%d/%m/%Y")
+            if e.get("startTimestamp") else "?"
+        )
+        refs.append(
+            f"{fecha_str} R{ronda}: {home_name} {gh}-{ga} {away_name} "
+            f"({'local' if es_local else 'visitante'}, "
+            f"rival atk={rf['attack']:.1f}/def={rf['defense']:.1f}, w={w_attack:.2f})"
+        )
 
         stats = obtener_estadisticas(sesion, e["id"])
         time.sleep(0.8)
@@ -837,16 +880,20 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
             col_p = "home" if es_local else "away"
             col_r = "away" if es_local else "home"
             try:
-                acum[clave].append(int(str(stats[clave][col_p])))
+                acum[clave].append((int(str(stats[clave][col_p])), w_attack))
             except (ValueError, TypeError):
                 pass
             try:
-                acum_against[clave].append(int(str(stats[clave][col_r])))
+                acum_against[clave].append((int(str(stats[clave][col_r])), w_defense))
             except (ValueError, TypeError):
                 pass
 
-    lineas = [f"ESTADÍSTICAS DE {nombre_equipo.upper()} (últimos {len(partidos)} partidos terminados):"]
-    # #0p: aviso cuando los datos son de temporadas anteriores (ventana 180d).
+    # ── Fase 4: contexto y promedios ponderados ──────────────────────────────
+    n_partidos = len(rival_data)
+    lineas = [
+        f"ESTADÍSTICAS DE {nombre_equipo.upper()} "
+        f"(últimos {n_partidos} partidos, ponderados por recencia y calidad de rival):"
+    ]
     if _ULTIMOS_DATOS_VIEJOS.get(nombre_equipo.lower(), False):
         lineas.append(
             f"  ⚠️ AVISO: {nombre_equipo} no tiene partidos recientes (últimos {MAX_DIAS_HISTORIAL} días); "
@@ -854,41 +901,69 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         )
     lineas.append(f"  Partidos: {' | '.join(refs)}")
 
-    def _linea_goles(nombre, lista):
-        if lista:
-            lineas.append(f"  {nombre}: {lista} → promedio = {sum(lista)/len(lista):.2f}")
+    def _linea(nombre, pairs):
+        avg = _weighted_avg(pairs)
+        if avg is not None:
+            lineas.append(f"  {nombre}: {[v for v,_ in pairs]} → promedio ponderado = {avg:.2f}")
 
-    _linea_goles("Goles anotados",     goles)
-    _linea_goles("Goles recibidos",    goles_against)
-    _linea_goles("Goles anotados 1T",  goles_1h)
-    _linea_goles("Goles recibidos 1T", goles_against_1h)
-    _linea_goles("Goles anotados 2T",  goles_2h)
-    _linea_goles("Goles recibidos 2T", goles_against_2h)
+    _linea("Goles anotados",     goles)
+    _linea("Goles recibidos",    goles_against)
+    _linea("Goles anotados 1T",  goles_1h)
+    _linea("Goles recibidos 1T", goles_against_1h)
+    _linea("Goles anotados 2T",  goles_2h)
+    _linea("Goles recibidos 2T", goles_against_2h)
 
     for periodo, stat_name in _STATS_A_PRECOMPUTAR:
         clave = f"{periodo}_{stat_name}"
-        if acum[clave]:
-            prom = sum(acum[clave]) / len(acum[clave])
-            lineas.append(f"  {clave}: {acum[clave]} → promedio = {prom:.2f}")
-        if acum_against[clave]:
-            prom_a = sum(acum_against[clave]) / len(acum_against[clave])
-            lineas.append(f"  {clave} (concedidos): {acum_against[clave]} → promedio = {prom_a:.2f}")
+        avg = _weighted_avg(acum[clave])
+        if avg is not None:
+            lineas.append(f"  {clave}: {[v for v,_ in acum[clave]]} → promedio ponderado = {avg:.2f}")
+        avg_a = _weighted_avg(acum_against[clave])
+        if avg_a is not None:
+            lineas.append(f"  {clave} (concedidos): {[v for v,_ in acum_against[clave]]} → promedio ponderado = {avg_a:.2f}")
 
-    promedios = {}
-    def _set(k, lst):
-        if lst: promedios[k] = sum(lst) / len(lst)
+    # ── Promedios dict ────────────────────────────────────────────────────────
+    promedios: dict = {}
 
-    _set("goles", goles); _set("goles_against", goles_against)
-    _set("goles_1h", goles_1h); _set("goles_against_1h", goles_against_1h)
-    _set("goles_2h", goles_2h); _set("goles_against_2h", goles_against_2h)
-    # Proporción de partidos en que el equipo anotó al menos 1 gol (para BTTS)
+    def _set(k, pairs):
+        v = _weighted_avg(pairs)
+        if v is not None:
+            promedios[k] = v
+
+    _set("goles",            goles)
+    _set("goles_against",    goles_against)
+    _set("goles_1h",         goles_1h)
+    _set("goles_against_1h", goles_against_1h)
+    _set("goles_2h",         goles_2h)
+    _set("goles_against_2h", goles_against_2h)
+
+    # btts_score: proporción ponderada de partidos donde anotó ≥1 gol
     if goles:
-        promedios["btts_score"] = sum(1 for g in goles if g > 0) / len(goles)
+        total_w = sum(w for _, w in goles)
+        if total_w > 0:
+            promedios["btts_score"] = sum(w for v, w in goles if v > 0) / total_w
 
     for periodo, stat_name in _STATS_A_PRECOMPUTAR:
         clave = f"{periodo}_{stat_name}"
-        if acum[clave]:       promedios[clave]           = sum(acum[clave])         / len(acum[clave])
-        if acum_against[clave]: promedios[f"{clave}_against"] = sum(acum_against[clave]) / len(acum_against[clave])
+        _set(clave,              acum[clave])
+        _set(f"{clave}_against", acum_against[clave])
+
+    # ── attack_force / defense_force normalizados ─────────────────────────────
+    g_avg  = promedios.get("goles")
+    ga_avg = promedios.get("goles_against")
+    if g_avg is not None and league_avg_attack > 0:
+        promedios["attack_force"]  = g_avg  / league_avg_attack
+    if ga_avg is not None and league_avg_defense > 0:
+        promedios["defense_force"] = ga_avg / league_avg_defense
+    promedios["league_avg_goals"] = (league_avg_attack + league_avg_defense) / 2
+
+    af = promedios.get("attack_force")
+    df = promedios.get("defense_force")
+    if af is not None and df is not None:
+        lineas.append(
+            f"  Fuerza de ataque = {af:.2f} (>1 = mejor que promedio de rivales) | "
+            f"Fuerza defensiva = {df:.2f} (<1 = mejor que promedio de rivales)"
+        )
 
     return "\n".join(lineas), promedios
 
