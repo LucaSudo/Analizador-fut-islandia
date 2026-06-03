@@ -373,6 +373,7 @@ def _buscar_evento_por_equipos(sesion, equipo1: str, equipo2: str, fecha_str: st
             if eq1_match and eq2_match:
                 candidatos.append(ev["id"])
 
+    candidatos = list(dict.fromkeys(candidatos))  # eliminar duplicados (mismo event_id desde días adyacentes)
     if len(candidatos) == 1:
         return candidatos[0]
     if len(candidatos) > 1:
