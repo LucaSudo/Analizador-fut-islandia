@@ -607,6 +607,7 @@ def _sigma_para(stat_key: str | None) -> float:
 _LAMBDA_DECAY = 0.02        # e^(-λ*días): 30d→55%, 60d→30%, 90d→17%
 _RIVAL_CACHE_TTL = 3600     # 1 hora
 _CACHE_FUERZA_RIVAL: dict[str, tuple[float, dict]] = {}
+_CACHE_TEAM_ID:     dict[str, int | None] = {}  # nombre_lower → team_id SofaScore
 
 
 def _weighted_avg(pairs: list[tuple[float, float]]) -> float | None:
@@ -623,18 +624,38 @@ def _calcular_fuerza_rival_ligera(sesion, nombre_rival: str, liga_id: int,
                                    temporada_id: int, rondas_totales: int,
                                    n: int = 5) -> dict:
     """
-    Descarga los últimos N partidos del rival (solo scores, sin stats extra)
-    y retorna {attack: float, defense: float} como medida de su fuerza.
-    Resultado cacheado 1h por (equipo, liga_id).
+    Retorna {attack, defense} del rival usando su endpoint de equipo directo
+    (/team/{id}/events/last/0) — 2 requests en vez de 10+ ronda-por-ronda.
+    Resultado cacheado 1h. Fallback a obtener_partidos_equipo si team_id no se encuentra.
     """
     cache_key = f"{nombre_rival.lower()}_{liga_id}"
     cached = _CACHE_FUERZA_RIVAL.get(cache_key)
     if cached and (time.time() - cached[0]) < _RIVAL_CACHE_TTL:
         return cached[1]
 
-    partidos = obtener_partidos_equipo(
-        sesion, nombre_rival, liga_id, temporada_id, rondas_totales, n
-    )
+    # Estrategia rápida: endpoint directo de equipo (cualquier competencia)
+    partidos: list = []
+    nombre_lower = nombre_rival.lower()
+    if nombre_lower not in _CACHE_TEAM_ID:
+        _CACHE_TEAM_ID[nombre_lower] = _buscar_team_id(sesion, nombre_rival)
+    team_id = _CACHE_TEAM_ID[nombre_lower]
+
+    if team_id:
+        try:
+            data = fetch_api(sesion, f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/0")
+            for ev in data.get("events", []):
+                if ev.get("status", {}).get("type") == "finished":
+                    partidos.append(ev)
+                    if len(partidos) >= n:
+                        break
+        except Exception:
+            partidos = []
+
+    # Fallback: búsqueda ronda-por-ronda si el endpoint no devolvió nada
+    if not partidos:
+        partidos = obtener_partidos_equipo(
+            sesion, nombre_rival, liga_id, temporada_id, rondas_totales, n
+        )
 
     scored: list[float] = []
     conceded: list[float] = []
@@ -787,7 +808,7 @@ def calcular_1x2(xg1: float, xg2: float, max_goles: int = 8) -> tuple:
     return p_local, p_empate, p_visitante
 
 
-def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=15):
+def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=10):
     partidos = obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n)
 
     if not partidos:
