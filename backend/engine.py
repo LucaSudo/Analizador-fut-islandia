@@ -619,6 +619,43 @@ def _weighted_avg(pairs: list[tuple[float, float]]) -> float | None:
     return sum(v * w for v, w in pairs) / total_w
 
 
+def _calcular_fuerza_rival_ligera(sesion, nombre_rival: str, liga_id: int,
+                                   temporada_id: int, rondas_totales: int,
+                                   n: int = 5) -> dict:
+    """
+    Descarga los últimos N partidos del rival (solo scores, sin stats extra)
+    y retorna {attack: float, defense: float} como medida de su fuerza.
+    Resultado cacheado 1h por (equipo, liga_id).
+    """
+    cache_key = f"{nombre_rival.lower()}_{liga_id}"
+    cached = _CACHE_FUERZA_RIVAL.get(cache_key)
+    if cached and (time.time() - cached[0]) < _RIVAL_CACHE_TTL:
+        return cached[1]
+
+    partidos = obtener_partidos_equipo(
+        sesion, nombre_rival, liga_id, temporada_id, rondas_totales, n
+    )
+
+    scored: list[float] = []
+    conceded: list[float] = []
+    for e in partidos:
+        home_name = e.get("homeTeam", {}).get("name", "")
+        es_local = nombre_rival.lower() in home_name.lower()
+        gh = e.get("homeScore", {}).get("current")
+        ga = e.get("awayScore", {}).get("current")
+        if gh is not None and ga is not None:
+            scored.append(float(gh if es_local else ga))
+            conceded.append(float(ga if es_local else gh))
+
+    _DEFAULT = 1.2
+    result = {
+        "attack":  sum(scored)   / len(scored)   if scored   else _DEFAULT,
+        "defense": sum(conceded) / len(conceded) if conceded else _DEFAULT,
+    }
+    _CACHE_FUERZA_RIVAL[cache_key] = (time.time(), result)
+    return result
+
+
 def calcular_lineas_y_confianza(total_esperado: float,
                                   margen_minimo: float = 1.0,
                                   stat_key: str | None = None) -> tuple:
