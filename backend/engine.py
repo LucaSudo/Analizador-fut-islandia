@@ -1124,9 +1124,17 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
     v1_g = prom1.get("goles"); v2_g = prom2.get("goles")
     a1_g = prom1.get("goles_against"); a2_g = prom2.get("goles_against")
     if all(x is not None for x in [v1_g, v2_g, a1_g, a2_g]):
-        _HOME_ADV = 1.12   # factor de ventaja local (conservador)
-        xg1 = (v1_g + a2_g) / 2 * _HOME_ADV   # equipo1 juega de local
-        xg2 = (v2_g + a1_g) / 2 / _HOME_ADV   # equipo2 juega de visitante
+        _HOME_ADV = 1.12
+        af1 = prom1.get("attack_force");  df1 = prom1.get("defense_force")
+        af2 = prom2.get("attack_force");  df2 = prom2.get("defense_force")
+        lg  = (prom1.get("league_avg_goals", 1.2) + prom2.get("league_avg_goals", 1.2)) / 2
+        if all(x is not None for x in [af1, df1, af2, df2]):
+            # xG basado en fuerza normalizada: ataque / defensa_rival × promedio_liga
+            xg1 = af1 / max(df2, 0.1) * lg * _HOME_ADV
+            xg2 = af2 / max(df1, 0.1) * lg / _HOME_ADV
+        else:
+            xg1 = (v1_g + a2_g) / 2 * _HOME_ADV
+            xg2 = (v2_g + a1_g) / 2 / _HOME_ADV
         p_loc, p_emp, p_vis = calcular_1x2(xg1, xg2)
         max_res = max(
             [("1 (local)", p_loc), ("X (empate)", p_emp), ("2 (visitante)", p_vis)],

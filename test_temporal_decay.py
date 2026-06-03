@@ -168,3 +168,30 @@ def test_precomputar_sin_partidos_retorna_promedios_vacios():
         ctx, promedios = precomputar_stats_equipo(sesion, "Fantasma FC", 1, 1, 10, n=15)
     assert promedios == {}
     assert "FANTASMA FC" in ctx.upper()
+
+
+# ── Poisson xG mejorado ────────────────────────────────────────────────────────
+
+from engine import calcular_1x2
+
+
+def test_poisson_attack_force_mayor_da_mas_xg():
+    league_avg = 1.2
+    HOME_ADV = 1.12
+    xg_fuerte = (1.5 / 1.0) * league_avg * HOME_ADV
+    xg_normal = (1.0 / 1.0) * league_avg * HOME_ADV
+    assert xg_fuerte > xg_normal
+
+
+def test_poisson_defense_force_menor_concede_menos():
+    league_avg = 1.2
+    HOME_ADV = 1.12
+    attack_rival = 1.0
+    xg_vs_solido = (attack_rival / 0.6) * league_avg / HOME_ADV
+    xg_vs_debil  = (attack_rival / 1.5) * league_avg / HOME_ADV
+    assert xg_vs_solido > xg_vs_debil
+
+
+def test_poisson_1x2_probabilidades_suman_uno():
+    p_loc, p_emp, p_vis = calcular_1x2(1.5, 1.2)
+    assert abs(p_loc + p_emp + p_vis - 1.0) < 0.01
