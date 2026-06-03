@@ -956,6 +956,7 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
     if ga_avg is not None and league_avg_defense > 0:
         promedios["defense_force"] = ga_avg / league_avg_defense
     promedios["league_avg_goals"] = (league_avg_attack + league_avg_defense) / 2
+    promedios["n_partidos"] = n_partidos
 
     af = promedios.get("attack_force")
     df = promedios.get("defense_force")
@@ -966,6 +967,39 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         )
 
     return "\n".join(lineas), promedios
+
+
+_MIN_PARTIDOS_ANALISIS = 8  # umbral mínimo antes de complementar con otra liga
+
+
+def _merge_promedios(p1: dict, p2: dict, n1: int, n2: int) -> dict:
+    """Combina dos dicts de promedios ponderando por cantidad de partidos.
+    attack_force/defense_force se recalculan del merged para que sean coherentes."""
+    total = n1 + n2
+    if total == 0:
+        return p1
+    w1 = n1 / total
+    w2 = n2 / total
+    skip = {"n_partidos", "attack_force", "defense_force", "league_avg_goals"}
+    merged: dict = {}
+    for k in set(p1) | set(p2):
+        if k in skip:
+            continue
+        if k in p1 and k in p2:
+            merged[k] = p1[k] * w1 + p2[k] * w2
+        elif k in p1:
+            merged[k] = p1[k]
+        else:
+            merged[k] = p2[k]
+    merged["n_partidos"] = total
+    lg = p1.get("league_avg_goals", 1.2) * w1 + p2.get("league_avg_goals", 1.2) * w2
+    merged["league_avg_goals"] = lg
+    if lg > 0:
+        if "goles" in merged:
+            merged["attack_force"] = merged["goles"] / lg
+        if "goles_against" in merged:
+            merged["defense_force"] = merged["goles_against"] / lg
+    return merged
 
 
 def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progress_cb=None):
@@ -1009,15 +1043,17 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
     stats_eq1, prom1 = precomputar_stats_equipo(sesion, equipo1, liga_id, temporada_id, rondas)
     stats_eq2, prom2 = precomputar_stats_equipo(sesion, equipo2, liga_id, temporada_id, rondas)
 
-    # Si algún equipo no tiene historial en la liga del fixture, buscar en otras
+    # Si algún equipo no tiene historial suficiente en la liga del fixture, complementar
     def _buscar_en_otras_ligas(nombre_eq, stats_orig, prom_orig):
-        if prom_orig:
+        n_orig = prom_orig.get("n_partidos", 0) if prom_orig else 0
+        if n_orig >= _MIN_PARTIDOS_ANALISIS:
             return stats_orig, prom_orig
+        modo = "complementando" if n_orig > 0 else "buscando"
         for nombre_alt, datos_alt in LIGAS.items():
             if nombre_alt == liga_nombre:
                 continue
             if progress_cb:
-                progress_cb(f"⚠️ Sin historial de {nombre_eq} en {liga_nombre} — buscando en {nombre_alt}...")
+                progress_cb(f"⚠️ Pocos datos de {nombre_eq} en {liga_nombre} ({n_orig}p) — {modo} en {nombre_alt}...")
             try:
                 rd_alt = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/"
                                           f"{datos_alt['id']}/season/{datos_alt['temporada']}/rounds")
@@ -1029,10 +1065,18 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
             stats_alt, prom_alt = precomputar_stats_equipo(
                 sesion, nombre_eq, datos_alt["id"], datos_alt["temporada"], rondas_alt
             )
-            if prom_alt:
-                if progress_cb:
-                    progress_cb(f"✅ Historial de {nombre_eq} encontrado en {nombre_alt}")
+            n_alt = prom_alt.get("n_partidos", 0) if prom_alt else 0
+            if not n_alt:
+                continue
+            if progress_cb:
+                progress_cb(f"✅ {nombre_eq}: +{n_alt} partidos de {nombre_alt}")
+            if not prom_orig:
                 return stats_alt, prom_alt
+            # Merge: combina stats de ambas competencias ponderando por cantidad de partidos
+            stats_merged = (stats_orig
+                            + f"\n\n[Datos complementarios de {nombre_alt} — {n_alt} partidos]\n"
+                            + stats_alt)
+            return stats_merged, _merge_promedios(prom_orig, prom_alt, n_orig, n_alt)
         return stats_orig, prom_orig
 
     stats_eq1, prom1 = _buscar_en_otras_ligas(equipo1, stats_eq1, prom1)
@@ -2220,7 +2264,8 @@ _PRED_KEYWORDS = [
     "over ", "under ",
     "quién gana", "quien gana",
     "prediccion", "predicción", "pronostico", "pronóstico",
-    "analizá", "analiza el partido",
+    "analizá", "analiza ", "analisis", "análisis", "analicemos",
+    "hace un analisis", "hacer un analisis", "analiza el partido",
     "combinada", "acumuladora", "combina ", "armame", "arma una",
     "dame una combinada", "quiero una combinada",
     "agregame", "agrega ", "agrega un", "agrega una",
@@ -2514,9 +2559,15 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
                 "Seguí EXACTAMENTE estas reglas:\n"
                 f"{fixtures_bloque}\n"
                 "CASO 1 — El partido es ABSOLUTAMENTE CLARO:\n"
-                "  ÚNICAMENTE si el usuario nombró AMBOS equipos, o dijo 'de hoy' y hay exactamente un partido [HOY].\n"
+                "  - El usuario nombró AMBOS equipos, O\n"
+                "  - Dijo 'de hoy' y hay exactamente un partido [HOY], O\n"
+                "  - Usó referencia deíctica ('ese partido', 'ese', 'el primero', 'el de arriba',\n"
+                "    'ese mismo', 'aquel') Y en el historial reciente hay UN solo partido mencionado.\n"
                 "  → Escribís UNA frase corta y terminás con:\n"
                 "  ACTION:ANALIZAR|equipo_local|equipo_visitante|foco|liga\n\n"
+                "CASO 1b — Referencia deíctica con VARIOS partidos en historial:\n"
+                "  → Preguntá EXACTAMENTE: '¿Cuál querés que analice? ¿[equipoA vs equipoB] o [equipoC vs equipoD]?'\n"
+                "  NUNCA emitas ACTION:ANALIZAR sin partido confirmado.\n\n"
                 "CASO 2 — CUALQUIER OTRA SITUACIÓN:\n"
                 "  → Buscá en la lista de arriba y proponé el partido.\n"
                 "  NUNCA emitas ACTION:ANALIZAR sin partido confirmado."
