@@ -89,6 +89,22 @@ def _calcular_ganancia(acerto: bool | None, cuota: float | None) -> float | None
     return round(cuota - 1, 4) if acerto else -1.0
 
 
+def _calcular_racha(verificadas_desc: list) -> str | None:
+    """Calcula la racha actual desde predicciones verificadas ordenadas desc."""
+    if not verificadas_desc:
+        return None
+    primer = verificadas_desc[0].get("acerto")
+    count = 0
+    for p in verificadas_desc:
+        if p.get("acerto") == primer:
+            count += 1
+        else:
+            break
+    if count < 2:
+        return None
+    return f"{count} aciertos seguidos 🔥" if primer else f"{count} fallos consecutivos"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardar predicción
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +117,8 @@ def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
                        confianza: str | None = None,
                        cuota: float | None = None,
                        edge: float | None = None,
-                       ganancia: float | None = None):
+                       ganancia: float | None = None,
+                       liga_nombre: str | None = None):
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # Si hay evento_id y ya existe esa combinación evento+foco+user → actualizar
@@ -123,6 +140,7 @@ def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
                     "confianza":           confianza,
                     "edge":                edge,
                     "ganancia":            ganancia,
+                    "liga_nombre":         liga_nombre,
                 }).eq("id", row_id).execute()
                 print(f"↩️  Predicción actualizada (evento {evento_id}, foco '{foco}')")
                 return
@@ -149,6 +167,7 @@ def guardar_prediccion(equipo1: str, equipo2: str, foco: str, prediccion: str,
             "cuota":               cuota,
             "edge":                edge,
             "ganancia":            ganancia,
+            "liga_nombre":         liga_nombre,
         }).execute()
     except Exception as e:
         print(f"⚠️  Supabase error al guardar predicción: {e}")
