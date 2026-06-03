@@ -1644,6 +1644,7 @@ def _guardar_picks_combinada(picks: list[dict], user_id: str = "default") -> Non
             liga_id=liga_info["id"] if liga_info else None,
             temporada_id=liga_info["temporada"] if liga_info else None,
             user_id=user_id,
+            liga_nombre=pick["liga"],
         )
 
 

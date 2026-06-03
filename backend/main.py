@@ -872,6 +872,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     confianza=_conf_val,
                     cuota=_cuota,
                     edge=_edge,
+                    liga_nombre=liga_nombre,
                 )
             except Exception as _save_err:
                 _safe_print(f"[warn] guardar_prediccion falló: {_save_err}")
