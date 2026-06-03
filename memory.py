@@ -94,6 +94,8 @@ def _calcular_racha(verificadas_desc: list) -> str | None:
     if not verificadas_desc:
         return None
     primer = verificadas_desc[0].get("acerto")
+    if primer is None:
+        return None
     count = 0
     for p in verificadas_desc:
         if p.get("acerto") == primer:

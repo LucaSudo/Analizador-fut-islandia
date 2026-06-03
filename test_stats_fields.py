@@ -33,6 +33,9 @@ class TestCalcularRacha(unittest.TestCase):
     def test_racha_un_elemento(self):
         self.assertIsNone(self._racha([True]))
 
+    def test_racha_primer_elemento_none_es_none(self):
+        self.assertIsNone(self._racha([None, None, None]))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
