@@ -957,8 +957,11 @@ async def get_stats(http_request: Request):
     from collections import defaultdict
     from memory import _calcular_racha
 
-    res = db.table("predicciones").select("*").eq("user_id", user_id).order("created_at").execute()
-    preds = res.data or []
+    try:
+        res = db.table("predicciones").select("*").eq("user_id", user_id).order("created_at").execute()
+        preds = res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Error consultando predicciones: {e}")
 
     total       = len(preds)
     verificadas = [p for p in preds if p.get("acerto") is not None]

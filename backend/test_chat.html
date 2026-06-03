@@ -1219,14 +1219,14 @@
       const INACTIVE = 'flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer';
 
       if (name === 'history') {
-        dashBody.classList.add('hidden');
-        statsPanel.classList.remove('hidden');
+        dashBody.style.display = 'none';
+        statsPanel.style.display = 'flex';
         navHist.className = ACTIVE;
         navDash.className = INACTIVE;
         loadStats();
       } else {
-        statsPanel.classList.add('hidden');
-        dashBody.classList.remove('hidden');
+        statsPanel.style.display = 'none';
+        dashBody.style.display = 'flex';
         navDash.className = ACTIVE;
         navHist.className = INACTIVE;
       }
