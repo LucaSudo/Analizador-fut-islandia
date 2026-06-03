@@ -603,6 +603,22 @@ def _sigma_para(stat_key: str | None) -> float:
     return _SIGMA_POR_STAT.get(base, 1.0)
 
 
+# ── Temporal decay + rival quality ──────────────────────────────────────────
+_LAMBDA_DECAY = 0.02        # e^(-λ*días): 30d→55%, 60d→30%, 90d→17%
+_RIVAL_CACHE_TTL = 3600     # 1 hora
+_CACHE_FUERZA_RIVAL: dict[str, tuple[float, dict]] = {}
+
+
+def _weighted_avg(pairs: list[tuple[float, float]]) -> float | None:
+    """Promedio ponderado. pairs = [(valor, peso), ...]. Retorna None si vacío."""
+    if not pairs:
+        return None
+    total_w = sum(w for _, w in pairs)
+    if total_w == 0:
+        return None
+    return sum(v * w for v, w in pairs) / total_w
+
+
 def calcular_lineas_y_confianza(total_esperado: float,
                                   margen_minimo: float = 1.0,
                                   stat_key: str | None = None) -> tuple:
