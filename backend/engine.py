@@ -825,7 +825,7 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         es_local  = nombre_equipo.lower() in home_name.lower()
         rival     = away_name if es_local else home_name
         rf = _calcular_fuerza_rival_ligera(
-            sesion, rival, liga_id, temporada_id, rondas_totales, n=5
+            sesion, rival, liga_id, temporada_id, rondas_totales, n=3
         )
         rival_data.append((e, es_local, rival, rf))
 
@@ -892,7 +892,7 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         )
 
         stats = obtener_estadisticas(sesion, e["id"])
-        time.sleep(0.8)
+        time.sleep(0.3)
 
         for periodo, stat_name in _STATS_A_PRECOMPUTAR:
             clave = f"{periodo}_{stat_name}"
@@ -1069,10 +1069,39 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         n_orig = prom_orig.get("n_partidos", 0) if prom_orig else 0
         if n_orig >= _MIN_PARTIDOS_ANALISIS:
             return stats_orig, prom_orig
+
+        # Identificar en qué ligas juega el equipo via team endpoint
+        # (2 requests) en vez de probar las 13 ligas ronda-por-ronda (130+ requests).
+        nombre_lower = nombre_eq.lower()
+        if nombre_lower not in _CACHE_TEAM_ID:
+            _CACHE_TEAM_ID[nombre_lower] = _buscar_team_id(sesion, nombre_eq)
+        team_id = _CACHE_TEAM_ID[nombre_lower]
+
+        ligas_a_probar: list[tuple[str, dict]] = []
+        if team_id:
+            try:
+                from collections import Counter
+                data_t = fetch_api(sesion, f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/0")
+                ut_counter: Counter = Counter()
+                for e in data_t.get("events", []):
+                    if e.get("status", {}).get("type") == "finished":
+                        ut_id = ((e.get("tournament") or {}).get("uniqueTournament") or {}).get("id")
+                        if ut_id:
+                            ut_counter[ut_id] += 1
+                for ut_id, _ in ut_counter.most_common():
+                    for nombre_alt, datos_alt in LIGAS.items():
+                        if datos_alt["id"] == ut_id and nombre_alt != liga_nombre:
+                            ligas_a_probar.append((nombre_alt, datos_alt))
+                            break
+            except Exception:
+                pass
+
+        # Fallback: si el team endpoint no identificó ligas conocidas, probar todas
+        if not ligas_a_probar:
+            ligas_a_probar = [(n, d) for n, d in LIGAS.items() if n != liga_nombre]
+
         modo = "complementando" if n_orig > 0 else "buscando"
-        for nombre_alt, datos_alt in LIGAS.items():
-            if nombre_alt == liga_nombre:
-                continue
+        for nombre_alt, datos_alt in ligas_a_probar:
             if progress_cb:
                 progress_cb(f"⚠️ Pocos datos de {nombre_eq} en {liga_nombre} ({n_orig}p) — {modo} en {nombre_alt}...")
             try:
@@ -1084,7 +1113,7 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
             except Exception:
                 rondas_alt = datos_alt["rondas"]
             stats_alt, prom_alt = precomputar_stats_equipo(
-                sesion, nombre_eq, datos_alt["id"], datos_alt["temporada"], rondas_alt
+                sesion, nombre_eq, datos_alt["id"], datos_alt["temporada"], rondas_alt, n=6
             )
             n_alt = prom_alt.get("n_partidos", 0) if prom_alt else 0
             if not n_alt:
