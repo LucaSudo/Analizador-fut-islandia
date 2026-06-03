@@ -787,7 +787,8 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
 
             # ── Generar párrafos 1 y 2 en Python (garantizado) ───────────
             parrafos_python = engine._generar_parrafos_python(
-                foco_lower, equipo1, equipo2, lineas_py, prom_eq1, prom_eq2
+                foco_lower, equipo1, equipo2, lineas_py, prom_eq1, prom_eq2,
+                liga_nombre=liga_nombre,
             )
 
             if parrafos_python:

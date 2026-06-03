@@ -962,6 +962,9 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         # Mantenemos margen_minimo=0.5 para goles como piso.
         mm = 0.5 if foco_key == "goles" else 1.0
         ld, ls, conf, lc = calcular_lineas_y_confianza(total, margen_minimo=mm, stat_key=foco_key)
+        if _sc:
+            tr = _sc.get_track_record(foco_key, liga_nombre, ls)
+            conf, _ = _ajustar_confianza_por_track_record(foco_key, liga_nombre, ls, conf, tr)
         lineas_python[foco_key] = (total, ld, ls, conf, lc)
 
     lineas_ctx = []
@@ -1160,7 +1163,8 @@ _FOCO_A_CLAVE_STAT = {
 }
 
 def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
-                              lineas_python: dict, prom1: dict, prom2: dict) -> str | None:
+                              lineas_python: dict, prom1: dict, prom2: dict,
+                              liga_nombre: str = "") -> str | None:
     if foco not in lineas_python:
         return None
     total, directa, recomendada, confianza, conservadora = lineas_python[foco]
@@ -1196,7 +1200,22 @@ def _generar_parrafos_python(foco: str, eq1: str, eq2: str,
     if conservadora != recomendada:
         p2 += f" Para los más conservadores: {conservadora} (Muy alta)."
 
-    return f"{p1}\n\n{p2}"
+    tr_texto = ""
+    if _sc:
+        tr = _sc.get_track_record(foco, liga_nombre or None, recomendada)
+        if tr:
+            nivel_desc = {
+                "C": f"{tr['liga']} | {tr['rango']}",
+                "B": tr["liga"],
+                "A": "todos los partidos",
+            }
+            tr_texto = (
+                f"\nTRACK RECORD COLECTIVO (foco: {foco} | {nivel_desc[tr['nivel']]}):\n"
+                f"  {tr['muestras']} predicciones verificadas → {tr['aciertos']} aciertos "
+                f"({round(tr['tasa']*100)}%)\n"
+            )
+
+    return f"{p1}\n\n{p2}{tr_texto}"
 
 
 def buscar_fixture_equipo(nombre_equipo: str, dias: int = 4) -> list[str]:
@@ -1295,6 +1314,9 @@ _STAT_NOMBRE_ES = {
     "tarjetas_rojas": "Tarjetas rojas", "faltas": "Faltas totales",
     "faltas_1h": "Faltas 1er tiempo", "faltas_2h": "Faltas 2do tiempo",
     "remates": "Remates al arco", "remates_1h": "Remates al arco 1T", "remates_2h": "Remates al arco 2T",
+    "btts":              "Ambos anotan",
+    "1x2":               "Resultado (1X2)",
+    "doble_oportunidad": "Doble oportunidad",
 }
 
 _STATS_COMBINADA_MAPA = {
@@ -1478,6 +1500,77 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
             "liga": liga_nombre, "stat": stat_key, "total": total,
             "linea_directa": ld, "linea_segura": ls, "confianza": conf,
         })
+
+    # ── btts (ambos anotan) ──────────────────────────────────────────────────
+    if stats_keys is None:
+        btts1 = prom1.get("btts_score")
+        btts2 = prom2.get("btts_score")
+        if btts1 is not None and btts2 is not None:
+            btts_prob = min(btts1 * btts2, 0.95)
+            if btts_prob >= 0.65:
+                btts_rec  = "Ambos Anotan Sí" if btts_prob >= 0.50 else "Ambos Anotan No"
+                btts_conf = "Alta 🟢" if btts_prob >= 0.75 else "Media 🟡"
+                if _sc:
+                    tr = _sc.get_track_record("btts", liga_nombre, btts_rec)
+                    btts_conf, _ = _ajustar_confianza_por_track_record(
+                        "btts", liga_nombre, btts_rec, btts_conf, tr
+                    )
+                picks.append({
+                    "partido": f"{eq1} vs {eq2}", "equipo1": eq1, "equipo2": eq2,
+                    "liga": liga_nombre, "stat": "btts",
+                    "total": round(btts_prob * 100, 1),
+                    "linea_directa": btts_rec, "linea_segura": btts_rec,
+                    "confianza": btts_conf,
+                })
+
+    # ── 1x2 y doble oportunidad ──────────────────────────────────────────────
+    if stats_keys is None:
+        xg1 = prom1.get("goles")
+        xg2 = prom2.get("goles")
+        if xg1 is not None and xg2 is not None:
+            p_loc, p_emp, p_vis = calcular_1x2(xg1, xg2)
+            candidatos_1x2 = [
+                ("Local gana",     p_loc),
+                ("Empate",         p_emp),
+                ("Visitante gana", p_vis),
+            ]
+            mejor_label, mejor_prob = max(candidatos_1x2, key=lambda x: x[1])
+            if mejor_prob >= 0.55:
+                conf_1x2 = "Alta 🟢" if mejor_prob >= 0.65 else "Media 🟡"
+                if _sc:
+                    tr = _sc.get_track_record("1x2", liga_nombre, mejor_label)
+                    conf_1x2, _ = _ajustar_confianza_por_track_record(
+                        "1x2", liga_nombre, mejor_label, conf_1x2, tr
+                    )
+                picks.append({
+                    "partido": f"{eq1} vs {eq2}", "equipo1": eq1, "equipo2": eq2,
+                    "liga": liga_nombre, "stat": "1x2",
+                    "total": round(mejor_prob * 100, 1),
+                    "linea_directa": mejor_label, "linea_segura": mejor_label,
+                    "confianza": conf_1x2,
+                })
+
+            doble_ops = [
+                ("1X", p_loc + p_emp),
+                ("X2", p_emp + p_vis),
+                ("12", p_loc + p_vis),
+            ]
+            mejor_do, prob_do = max(doble_ops, key=lambda x: x[1])
+            if prob_do >= 0.75:
+                conf_do = "Alta 🟢" if prob_do >= 0.80 else "Media 🟡"
+                if _sc:
+                    tr = _sc.get_track_record("doble_oportunidad", liga_nombre, mejor_do)
+                    conf_do, _ = _ajustar_confianza_por_track_record(
+                        "doble_oportunidad", liga_nombre, mejor_do, conf_do, tr
+                    )
+                picks.append({
+                    "partido": f"{eq1} vs {eq2}", "equipo1": eq1, "equipo2": eq2,
+                    "liga": liga_nombre, "stat": "doble_oportunidad",
+                    "total": round(prob_do * 100, 1),
+                    "linea_directa": mejor_do, "linea_segura": mejor_do,
+                    "confianza": conf_do,
+                })
+
     return picks
 
 
@@ -2332,8 +2425,17 @@ def initialize_engine(progress_cb=None) -> bool:
         LIGAS.update(_fl.LIGAS)
         SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + f"\n\n{fixtures_texto}"
         if progress_cb: progress_cb("✅ Fixtures cargados")
-        return True
+        result = True
     except Exception as e:
         if progress_cb: progress_cb(f"⚠️ Error cargando fixtures: {e}")
         SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
-        return False
+        result = False
+
+    # Iniciar caché de stats colectivas
+    if _sc:
+        try:
+            _sc.refresh_stats()
+        except Exception as e:
+            print(f"⚠️  No se pudo iniciar stats_colectivas: {e}")
+
+    return result

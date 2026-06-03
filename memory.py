@@ -528,6 +528,19 @@ def generar_contexto_memoria(user_id: str = None) -> str:
     notas = _notas_equipos(user_id)
     contexto = ""
 
+    # Resumen global colectivo (anónimo, todos los usuarios)
+    try:
+        import sys, os
+        _backend = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
+        if _backend not in sys.path:
+            sys.path.insert(0, _backend)
+        from stats_colectivas import get_resumen_global
+        resumen_global = get_resumen_global()
+        if resumen_global:
+            contexto += resumen_global + "\n"
+    except Exception:
+        pass
+
     if not preds:
         return contexto
 
