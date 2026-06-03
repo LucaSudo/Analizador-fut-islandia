@@ -945,6 +945,103 @@ async def get_fixtures():
     return {"fixtures": texto}
 
 
+@app.get("/api/stats")
+async def get_stats(http_request: Request):
+    auth_header = http_request.headers.get("Authorization")
+    try:
+        user_id = verificar_token(auth_header)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    from supabase_client import db
+    from collections import defaultdict
+    from memory import _calcular_racha
+
+    res = db.table("predicciones").select("*").eq("user_id", user_id).order("created_at").execute()
+    preds = res.data or []
+
+    total       = len(preds)
+    verificadas = [p for p in preds if p.get("acerto") is not None]
+    acertadas   = [p for p in verificadas if p.get("acerto") is True]
+    n_v = len(verificadas)
+    n_a = len(acertadas)
+
+    hit_rate = round(n_a / n_v * 100, 1) if n_v else None
+
+    ganancias = [p["ganancia"] for p in verificadas if p.get("ganancia") is not None]
+    roi    = round(sum(ganancias) / len(ganancias) * 100, 1) if ganancias else None
+    yield_ = round(sum(ganancias) / total * 100, 1) if (ganancias and total) else None
+
+    verificadas_desc = sorted(verificadas, key=lambda p: p.get("created_at", ""), reverse=True)
+    racha_actual = _calcular_racha(verificadas_desc)
+
+    # Por mercado
+    mercado_map: dict = defaultdict(lambda: {"total": 0, "verificadas": 0, "acertadas": 0})
+    for p in preds:
+        fk = p.get("foco") or "desconocido"
+        mercado_map[fk]["total"] += 1
+        if p.get("acerto") is not None:
+            mercado_map[fk]["verificadas"] += 1
+            if p.get("acerto") is True:
+                mercado_map[fk]["acertadas"] += 1
+
+    por_mercado = []
+    for fk, s in sorted(mercado_map.items(), key=lambda x: -x[1]["total"]):
+        if s["verificadas"] == 0:
+            continue
+        hr = round(s["acertadas"] / s["verificadas"] * 100, 1) if s["verificadas"] else None
+        por_mercado.append({"foco": fk, "total": s["total"], "acertadas": s["acertadas"],
+                            "hit_rate": hr, "roi": None})
+
+    # Por liga
+    liga_map: dict = defaultdict(lambda: {"total": 0, "verificadas": 0, "acertadas": 0})
+    for p in preds:
+        lk = p.get("liga_nombre") or "Sin liga"
+        liga_map[lk]["total"] += 1
+        if p.get("acerto") is not None:
+            liga_map[lk]["verificadas"] += 1
+            if p.get("acerto") is True:
+                liga_map[lk]["acertadas"] += 1
+
+    por_liga = []
+    for lk, s in sorted(liga_map.items(), key=lambda x: -x[1]["total"]):
+        if s["verificadas"] == 0:
+            continue
+        hr = round(s["acertadas"] / s["verificadas"] * 100, 1) if s["verificadas"] else None
+        por_liga.append({"liga": lk, "total": s["total"], "acertadas": s["acertadas"],
+                         "hit_rate": hr, "roi": None})
+
+    recientes_raw = sorted(preds, key=lambda p: p.get("created_at", ""), reverse=True)[:10]
+    recientes = [
+        {
+            "fecha":             p.get("fecha", ""),
+            "equipo1":           p.get("equipo1", ""),
+            "equipo2":           p.get("equipo2", ""),
+            "foco":              p.get("foco", ""),
+            "linea_recomendada": p.get("linea_recomendada"),
+            "confianza":         p.get("confianza"),
+            "acerto":            p.get("acerto"),
+            "liga_nombre":       p.get("liga_nombre"),
+        }
+        for p in recientes_raw
+    ]
+
+    return {
+        "general": {
+            "total":        total,
+            "verificadas":  n_v,
+            "acertadas":    n_a,
+            "hit_rate":     hit_rate,
+            "roi":          roi,
+            "yield":        yield_,
+            "racha_actual": racha_actual,
+        },
+        "por_mercado": por_mercado,
+        "por_liga":    por_liga,
+        "recientes":   recientes,
+    }
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest, http_request: Request):
     """
