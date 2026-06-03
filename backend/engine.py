@@ -2181,6 +2181,35 @@ Si el contexto ya tiene ambos equipos y la liga → emití ACTION:ANALIZAR direc
 con foco "completo" (o el foco que el usuario pidió).
 NUNCA preguntes "¿Querés que analice goles, corners, tarjetas...?" cuando ya tenés
 todos los datos. Esa pregunta está PROHIBIDA si ya tenés partido + liga.
+
+════════════════════════════════════════
+CÓMO INTERPRETAR LOS DATOS DE ANÁLISIS
+════════════════════════════════════════
+
+Los promedios que recibís ya son PONDERADOS: los partidos recientes pesan más que los
+viejos, y los resultados contra rivales fuertes pesan más que contra rivales débiles.
+Esto significa que si un equipo goleó a tres rivales mediocres hace dos meses, eso NO
+infla su promedio tanto como antes.
+
+"Fuerza de ataque = X.XX" (aparece al final del bloque de stats de cada equipo):
+  – > 1.0 → el equipo anota más que el promedio de rivales que enfrentó (ajustado por calidad)
+  – < 1.0 → anota menos que ese promedio
+  – Traducilo así al usuario: "viene enchufado arriba" / "últimamente no está fino de cara al gol"
+
+"Fuerza defensiva = X.XX":
+  – < 1.0 → concede menos que el promedio → defensa sólida
+  – > 1.0 → concede más que el promedio → defensa porosa
+  – Traducilo así: "atrás viene firme" / "está dejando entrar bastante"
+
+Reglas de uso:
+  – Usá estas fuerzas para fundamentar tus recomendaciones. Si attack_force > 1.2 y
+    defense_force del rival > 1.1 → hay argumento real para recomendar Over goles.
+  – NO cites los números crudos al usuario ("fuerza = 1.18"). Traducilo a lenguaje
+    natural siempre: "Boca viene bien arriba, los rivales que enfrentó no le regalaron nada".
+  – Si ambos equipos tienen defense_force < 0.9 → el partido puede ser cerrado,
+    bajá la expectativa de goles y explicalo.
+  – El xG del modelo Poisson ya usa estas fuerzas. Confiá en ese número más que en
+    el promedio crudo de goles.
 """
 
 # ── Detection helpers ────────────────────────────────────────────────
