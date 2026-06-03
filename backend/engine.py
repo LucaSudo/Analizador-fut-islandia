@@ -65,6 +65,11 @@ from fixture_loader import cargar_proximos_partidos
 import fixture_loader as _fl
 from memory import guardar_prediccion, generar_contexto_memoria, verificar_predicciones
 
+try:
+    import stats_colectivas as _sc
+except ImportError:
+    _sc = None
+
 # ── Config ──────────────────────────────────────────────────────────
 
 _API_KEY_GROQ = os.getenv("GROQ_API_KEY")
@@ -681,6 +686,32 @@ def _poisson_prob(lam: float, k: int) -> float:
         return math.exp(-lam) * (lam ** k) / math.factorial(k)
     except (OverflowError, ValueError):
         return 0.0
+
+
+# Orden de niveles de confianza (menor índice = mayor confianza)
+_NIVELES_CONFIANZA = ["Muy alta 🟢", "Alta 🟢", "Media 🟡", "Baja 🔴"]
+
+
+def _ajustar_confianza_por_track_record(
+    foco: str, liga: str | None, rango: str | None,
+    confianza_actual: str, track_record: dict | None
+) -> tuple[str, dict | None]:
+    """
+    Ajusta la confianza según el track record colectivo.
+    tasa < 0.45 → bajar un nivel | tasa > 0.70 → subir un nivel | 0.45-0.70 → sin cambio
+    """
+    if not track_record:
+        return confianza_actual, None
+    tasa = track_record["tasa"]
+    try:
+        idx = _NIVELES_CONFIANZA.index(confianza_actual)
+    except ValueError:
+        return confianza_actual, track_record
+    if tasa < 0.45:
+        idx = min(idx + 1, len(_NIVELES_CONFIANZA) - 1)
+    elif tasa > 0.70:
+        idx = max(idx - 1, 0)
+    return _NIVELES_CONFIANZA[idx], track_record
 
 
 def calcular_1x2(xg1: float, xg2: float, max_goles: int = 8) -> tuple:
