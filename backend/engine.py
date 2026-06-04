@@ -855,11 +855,13 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         days_ago = max(0.0, (ahora - ts) / 86400.0)
         t_w      = math.exp(-_LAMBDA_DECAY * days_ago)
 
-        # Factor de rival (clippeado a [0.3, 3.0])
-        # Para stats generadas: rival que defiende bien → más mérito → peso mayor
-        rival_hardness = max(0.3, min(3.0, league_avg_defense / max(rf["defense"], 0.1)))
+        # Factor de rival (clippeado a [0.7, 1.5])
+        # Cap reducido de 3.0 a 1.5: evita que un partido 3-0 contra un rival
+        # "aparentemente sólido" (n=3 muy ruidoso) se amplifique 3x y domine el promedio.
+        # 1.5 = máximo 50% de bonus/penalización por calidad de rival.
+        rival_hardness = max(0.7, min(1.5, league_avg_defense / max(rf["defense"], 0.1)))
         # Para stats concedidas: rival que ataca bien → muestra más representativa
-        rival_pressure = max(0.3, min(3.0, rf["attack"] / max(league_avg_attack, 0.1)))
+        rival_pressure = max(0.7, min(1.5, rf["attack"] / max(league_avg_attack, 0.1)))
 
         w_attack  = t_w * rival_hardness
         w_defense = t_w * rival_pressure
