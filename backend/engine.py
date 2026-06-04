@@ -1083,6 +1083,14 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
             _CACHE_TEAM_ID[nombre_lower] = _buscar_team_id(sesion, nombre_eq)
         team_id = _CACHE_TEAM_ID[nombre_lower]
 
+        # Competencias "hermanas": cuando el torneo principal es una copa continental,
+        # priorizar la otra copa continental (más comparable y generalmente más reciente).
+        _LIGAS_HERMANAS: dict[str, list[str]] = {
+            "Copa Sudamericana": ["Copa Libertadores"],
+            "Copa Libertadores": ["Copa Sudamericana"],
+            "Champions League":  ["Europa League", "Conference League"],
+        }
+
         ligas_a_probar: list[tuple[str, dict]] = []
         if team_id:
             try:
@@ -1099,6 +1107,11 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
                         if datos_alt["id"] == ut_id and nombre_alt != liga_nombre:
                             ligas_a_probar.append((nombre_alt, datos_alt))
                             break
+                # Mover ligas hermanas al tope: son más comparables (misma categoría de torneo)
+                hermanas = _LIGAS_HERMANAS.get(liga_nombre, [])
+                hermanas_encontradas = [(n, d) for n, d in ligas_a_probar if n in hermanas]
+                resto = [(n, d) for n, d in ligas_a_probar if n not in hermanas]
+                ligas_a_probar = hermanas_encontradas + resto
             except Exception:
                 pass
 
