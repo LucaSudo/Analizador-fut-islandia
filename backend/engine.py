@@ -970,12 +970,15 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
         _set(f"{clave}_against", acum_against[clave])
 
     # ── attack_force / defense_force normalizados ─────────────────────────────
+    # Clipeados a [0.5, 2.5]: evita que muestras pequeñas generen extremos
+    # irreales (ej: Boca 0.47 defense_force → O'Higgins xG casi cero).
+    _FORCE_MIN, _FORCE_MAX = 0.5, 2.5
     g_avg  = promedios.get("goles")
     ga_avg = promedios.get("goles_against")
     if g_avg is not None and league_avg_attack > 0:
-        promedios["attack_force"]  = g_avg  / league_avg_attack
+        promedios["attack_force"]  = max(_FORCE_MIN, min(_FORCE_MAX, g_avg  / league_avg_attack))
     if ga_avg is not None and league_avg_defense > 0:
-        promedios["defense_force"] = ga_avg / league_avg_defense
+        promedios["defense_force"] = max(_FORCE_MIN, min(_FORCE_MAX, ga_avg / league_avg_defense))
     promedios["league_avg_goals"] = (league_avg_attack + league_avg_defense) / 2
     promedios["n_partidos"] = n_partidos
 
@@ -1015,11 +1018,12 @@ def _merge_promedios(p1: dict, p2: dict, n1: int, n2: int) -> dict:
     merged["n_partidos"] = total
     lg = p1.get("league_avg_goals", 1.2) * w1 + p2.get("league_avg_goals", 1.2) * w2
     merged["league_avg_goals"] = lg
+    _FORCE_MIN, _FORCE_MAX = 0.5, 2.5
     if lg > 0:
         if "goles" in merged:
-            merged["attack_force"] = merged["goles"] / lg
+            merged["attack_force"] = max(_FORCE_MIN, min(_FORCE_MAX, merged["goles"] / lg))
         if "goles_against" in merged:
-            merged["defense_force"] = merged["goles_against"] / lg
+            merged["defense_force"] = max(_FORCE_MIN, min(_FORCE_MAX, merged["goles_against"] / lg))
     return merged
 
 
