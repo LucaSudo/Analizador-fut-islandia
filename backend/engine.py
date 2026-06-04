@@ -1223,9 +1223,11 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         af2 = prom2.get("attack_force");  df2 = prom2.get("defense_force")
         lg  = (prom1.get("league_avg_goals", 1.2) + prom2.get("league_avg_goals", 1.2)) / 2
         if all(x is not None for x in [af1, df1, af2, df2]):
-            # xG basado en fuerza normalizada: ataque / defensa_rival × promedio_liga
-            xg1 = af1 / max(df2, 0.1) * lg * _HOME_ADV
-            xg2 = af2 / max(df1, 0.1) * lg / _HOME_ADV
+            # Dixon-Coles: xG = ataque_propio × debilidad_defensiva_rival × promedio_liga
+            # df > 1 = defensa débil (concede más) → rival anota más ✓
+            # df < 1 = defensa sólida (concede menos) → rival anota menos ✓
+            xg1 = af1 * df2 * lg * _HOME_ADV
+            xg2 = af2 * df1 * lg / _HOME_ADV
         else:
             xg1 = (v1_g + a2_g) / 2 * _HOME_ADV
             xg2 = (v2_g + a1_g) / 2 / _HOME_ADV
