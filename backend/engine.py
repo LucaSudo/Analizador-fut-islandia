@@ -997,7 +997,7 @@ def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, ronda
     return "\n".join(lineas), promedios
 
 
-_MIN_PARTIDOS_ANALISIS = 8  # umbral mínimo antes de complementar con otra liga
+_MIN_PARTIDOS_ANALISIS = 10  # umbral mínimo antes de complementar con otra liga
 
 
 def _merge_promedios(p1: dict, p2: dict, n1: int, n2: int) -> dict:
