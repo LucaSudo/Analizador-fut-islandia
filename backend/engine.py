@@ -808,8 +808,10 @@ def calcular_1x2(xg1: float, xg2: float, max_goles: int = 8) -> tuple:
     return p_local, p_empate, p_visitante
 
 
-def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=10):
-    partidos = obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n)
+def precomputar_stats_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n=10,
+                             partidos_override=None):
+    partidos = (partidos_override if partidos_override is not None
+                else obtener_partidos_equipo(sesion, nombre_equipo, liga_id, temporada_id, rondas_totales, n))
 
     if not partidos:
         return f"ESTADÍSTICAS DE {nombre_equipo.upper()} (sin datos disponibles)", {}
@@ -1076,77 +1078,78 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         if n_orig >= _MIN_PARTIDOS_ANALISIS:
             return stats_orig, prom_orig
 
-        # Identificar en qué ligas juega el equipo via team endpoint
-        # (2 requests) en vez de probar las 13 ligas ronda-por-ronda (130+ requests).
         nombre_lower = nombre_eq.lower()
         if nombre_lower not in _CACHE_TEAM_ID:
             _CACHE_TEAM_ID[nombre_lower] = _buscar_team_id(sesion, nombre_eq)
         team_id = _CACHE_TEAM_ID[nombre_lower]
+        if not team_id:
+            return stats_orig, prom_orig
 
-        # Competencias "hermanas": cuando el torneo principal es una copa continental,
-        # priorizar la otra copa continental (más comparable y generalmente más reciente).
-        _LIGAS_HERMANAS: dict[str, list[str]] = {
-            "Copa Sudamericana": ["Copa Libertadores"],
-            "Copa Libertadores": ["Copa Sudamericana"],
-            "Champions League":  ["Europa League", "Conference League"],
-        }
+        # Estrategia global: tomar los N partidos más recientes del equipo
+        # directamente del team endpoint, sin importar la competencia.
+        # Así siempre usamos los datos más frescos disponibles.
+        n_needed = _MIN_PARTIDOS_ANALISIS - n_orig
+        ahora_ts = _time_mod.time()
+        cutoff = ahora_ts - MAX_DIAS_HISTORIAL * 86400
 
-        ligas_a_probar: list[tuple[str, dict]] = []
-        if team_id:
-            try:
-                from collections import Counter
-                data_t = fetch_api(sesion, f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/0")
-                ut_counter: Counter = Counter()
+        partidos_recientes: list = []
+        try:
+            for page in range(2):
+                data_t = fetch_api(sesion, f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/{page}")
                 for e in data_t.get("events", []):
-                    if e.get("status", {}).get("type") == "finished":
-                        ut_id = ((e.get("tournament") or {}).get("uniqueTournament") or {}).get("id")
-                        if ut_id:
-                            ut_counter[ut_id] += 1
-                for ut_id, _ in ut_counter.most_common():
-                    for nombre_alt, datos_alt in LIGAS.items():
-                        if datos_alt["id"] == ut_id and nombre_alt != liga_nombre:
-                            ligas_a_probar.append((nombre_alt, datos_alt))
-                            break
-                # Mover ligas hermanas al tope: son más comparables (misma categoría de torneo)
-                hermanas = _LIGAS_HERMANAS.get(liga_nombre, [])
-                hermanas_encontradas = [(n, d) for n, d in ligas_a_probar if n in hermanas]
-                resto = [(n, d) for n, d in ligas_a_probar if n not in hermanas]
-                ligas_a_probar = hermanas_encontradas + resto
-            except Exception:
-                pass
+                    if e.get("status", {}).get("type") != "finished":
+                        continue
+                    ts = e.get("startTimestamp", 0)
+                    if ts < cutoff:
+                        continue
+                    # Excluir amistosos
+                    torneo_nombre = (e.get("tournament") or {}).get("name", "").lower()
+                    if "friendly" in torneo_nombre or "amistoso" in torneo_nombre:
+                        continue
+                    # Excluir partidos ya incluidos en stats_orig (misma liga principal)
+                    ut_id = ((e.get("tournament") or {}).get("uniqueTournament") or {}).get("id")
+                    if ut_id == liga_id:
+                        continue
+                    partidos_recientes.append(e)
+                if len(partidos_recientes) >= n_needed + 4:
+                    break
+        except Exception:
+            pass
 
-        # Fallback: si el team endpoint no identificó ligas conocidas, probar todas
-        if not ligas_a_probar:
-            ligas_a_probar = [(n, d) for n, d in LIGAS.items() if n != liga_nombre]
+        partidos_recientes.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
+        partidos_complement = partidos_recientes[:n_needed]
+        if not partidos_complement:
+            return stats_orig, prom_orig
+
+        # Agrupar por competencia para el mensaje de progreso
+        comp_names: list[str] = []
+        for e in partidos_complement:
+            t = (e.get("tournament") or {}).get("name", "?")
+            if t not in comp_names:
+                comp_names.append(t)
+        comp_label = " + ".join(comp_names)
 
         modo = "complementando" if n_orig > 0 else "buscando"
-        for nombre_alt, datos_alt in ligas_a_probar:
-            if progress_cb:
-                progress_cb(f"⚠️ Pocos datos de {nombre_eq} en {liga_nombre} ({n_orig}p) — {modo} en {nombre_alt}...")
-            try:
-                rd_alt = fetch_api(sesion, f"https://www.sofascore.com/api/v1/unique-tournament/"
-                                          f"{datos_alt['id']}/season/{datos_alt['temporada']}/rounds")
-                rl_alt = rd_alt.get("rounds", [])
-                rondas_alt = (rd_alt.get("currentRound", {}).get("round")
-                              or (rl_alt[-1].get("round", datos_alt["rondas"]) if rl_alt else datos_alt["rondas"]))
-            except Exception:
-                rondas_alt = datos_alt["rondas"]
-            stats_alt, prom_alt = precomputar_stats_equipo(
-                sesion, nombre_eq, datos_alt["id"], datos_alt["temporada"], rondas_alt, n=6
-            )
-            n_alt = prom_alt.get("n_partidos", 0) if prom_alt else 0
-            if not n_alt:
-                continue
-            if progress_cb:
-                progress_cb(f"✅ {nombre_eq}: +{n_alt} partidos de {nombre_alt}")
-            if not prom_orig:
-                return stats_alt, prom_alt
-            # Merge: combina stats de ambas competencias ponderando por cantidad de partidos
-            stats_merged = (stats_orig
-                            + f"\n\n[Datos complementarios de {nombre_alt} — {n_alt} partidos]\n"
-                            + stats_alt)
-            return stats_merged, _merge_promedios(prom_orig, prom_alt, n_orig, n_alt)
-        return stats_orig, prom_orig
+        if progress_cb:
+            progress_cb(f"⚠️ Pocos datos de {nombre_eq} en {liga_nombre} ({n_orig}p) — {modo} con {len(partidos_complement)}p recientes ({comp_label})...")
+
+        stats_alt, prom_alt = precomputar_stats_equipo(
+            sesion, nombre_eq, liga_id, temporada_id, rondas,
+            n=len(partidos_complement), partidos_override=partidos_complement
+        )
+        n_alt = prom_alt.get("n_partidos", 0) if prom_alt else 0
+        if not n_alt:
+            return stats_orig, prom_orig
+
+        if progress_cb:
+            progress_cb(f"✅ {nombre_eq}: +{n_alt} partidos de {comp_label}")
+        if not prom_orig:
+            return stats_alt, prom_alt
+
+        stats_merged = (stats_orig
+                        + f"\n\n[Datos complementarios ({comp_label}) — {n_alt} partidos]\n"
+                        + stats_alt)
+        return stats_merged, _merge_promedios(prom_orig, prom_alt, n_orig, n_alt)
 
     stats_eq1, prom1 = _buscar_en_otras_ligas(equipo1, stats_eq1, prom1)
     stats_eq2, prom2 = _buscar_en_otras_ligas(equipo2, stats_eq2, prom2)
