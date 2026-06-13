@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
 # ── _weighted_avg ──────────────────────────────────────────────────────────────
 
-from engine import _weighted_avg
+from backend.engine import _weighted_avg
 
 
 def test_weighted_avg_basic():
@@ -48,7 +48,7 @@ def test_temporal_weight_decays_monotonically():
 # ── _calcular_fuerza_rival_ligera ─────────────────────────────────────────────
 
 from unittest.mock import patch, MagicMock
-from engine import _calcular_fuerza_rival_ligera, _CACHE_FUERZA_RIVAL
+from backend.engine import _calcular_fuerza_rival_ligera, _CACHE_FUERZA_RIVAL
 
 
 def _make_evento(home_goles, away_goles, home_name="Rival FC", away_name="Otro FC"):
@@ -107,7 +107,7 @@ def test_fuerza_rival_calcula_visitante_correctamente():
 # ── precomputar_stats_equipo — decaimiento temporal ───────────────────────────
 
 import time as _time_mod
-from engine import precomputar_stats_equipo
+from backend.engine import precomputar_stats_equipo
 
 
 def _make_partido_completo(home, away, gh, ga, dias_atras=0):
@@ -172,7 +172,7 @@ def test_precomputar_sin_partidos_retorna_promedios_vacios():
 
 # ── Poisson xG mejorado ────────────────────────────────────────────────────────
 
-from engine import calcular_1x2
+from backend.engine import calcular_1x2
 
 
 def test_poisson_attack_force_mayor_da_mas_xg():

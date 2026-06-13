@@ -43,7 +43,7 @@ class TestSystemPromptConTZ(unittest.TestCase):
     """Bug #0o — LLM ve horarios en TZ del user, no UTC."""
 
     def setUp(self):
-        import engine
+        from backend import engine
         self.engine = engine
         # SYSTEM_PROMPT sintético con fixtures en UTC
         engine.SYSTEM_PROMPT = (
@@ -231,7 +231,7 @@ class TestObtenerPartidosEquipo(unittest.TestCase):
     """Bug #0p — búsqueda de historial robusta."""
 
     def setUp(self):
-        import engine
+        from backend import engine
         self.engine = engine
         # Limpiar cache para que los tests sean independientes
         engine.cache_manager._partidos_equipo_cache = {}
@@ -338,7 +338,7 @@ class TestRetagFixturesTZ(unittest.TestCase):
     """Verifica el retaggeo de horarios con distintos offsets."""
 
     def setUp(self):
-        import engine
+        from backend import engine
         self.fn = engine._retag_fixtures_para_tz
         engine._SERVER_TZ_AT_LOAD = 0.0
 
@@ -378,7 +378,7 @@ class TestRetagFixturesTZ(unittest.TestCase):
         el tag se elimina correctamente — ese es el comportamiento esperado.
         """
         from datetime import datetime, timedelta
-        import engine
+        from backend import engine
         # Construir un fixture con la fecha de HOY en UTC
         hoy_utc = datetime.utcnow()
         fecha_utc = hoy_utc.strftime("%d/%m/%Y")

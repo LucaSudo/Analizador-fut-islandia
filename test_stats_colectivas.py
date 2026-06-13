@@ -12,32 +12,32 @@ sys.path.insert(0, os.path.dirname(__file__))
 class TestExtaerRango(unittest.TestCase):
 
     def test_extraer_rango_corners_over(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "[Combinada] Recomendación: Over 9.5 Corners totales. Total esperado: 10.23"
         self.assertEqual(_extraer_rango("corners", texto), "Over 9.5")
 
     def test_extraer_rango_corners_snap_al_bucket(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "Recomendación: Over 10.1 Corners. Total esperado: 11.0"
         self.assertEqual(_extraer_rango("corners", texto), "Over 10.5")
 
     def test_extraer_rango_goles(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "Apuesta recomendada: Over 2.5 (Alta)"
         self.assertEqual(_extraer_rango("goles", texto), "Over 2.5")
 
     def test_extraer_rango_btts_si(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "Recomendación: Ambos Anotan Sí (confianza: Alta)"
         self.assertEqual(_extraer_rango("btts", texto), "Ambos Anotan Sí")
 
     def test_extraer_rango_btts_no(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "Recomendación: Ambos Anotan No"
         self.assertEqual(_extraer_rango("btts", texto), "Ambos Anotan No")
 
     def test_extraer_rango_sin_linea(self):
-        from stats_colectivas import _extraer_rango
+        from backend.stats_colectivas import _extraer_rango
         texto = "Análisis completo del partido..."
         self.assertIsNone(_extraer_rango("corners", texto))
 
@@ -45,13 +45,13 @@ class TestExtaerRango(unittest.TestCase):
 class TestAcumular(unittest.TestCase):
 
     def test_acumular_nuevo_key(self):
-        from stats_colectivas import _acumular
+        from backend.stats_colectivas import _acumular
         d = {}
         _acumular(d, "corners__Premier League", True)
         self.assertEqual(d["corners__Premier League"], {"muestras": 1, "aciertos": 1})
 
     def test_acumular_acumula(self):
-        from stats_colectivas import _acumular
+        from backend.stats_colectivas import _acumular
         d = {}
         _acumular(d, "goles", True)
         _acumular(d, "goles", False)
@@ -79,7 +79,7 @@ class TestGetTrackRecord(unittest.TestCase):
 
     def test_get_track_record_nivel_c(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", self._mock_stats()):
             r = sc.get_track_record("goles", "Premier League", "Over 2.5")
         self.assertIsNotNone(r)
@@ -90,7 +90,7 @@ class TestGetTrackRecord(unittest.TestCase):
 
     def test_get_track_record_fallback_nivel_b(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", self._mock_stats()):
             r = sc.get_track_record("goles", "Premier League", "Over 3.5")
         self.assertIsNotNone(r)
@@ -99,7 +99,7 @@ class TestGetTrackRecord(unittest.TestCase):
 
     def test_get_track_record_fallback_nivel_a(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", self._mock_stats()):
             r = sc.get_track_record("goles", "Liga Inexistente", "Over 2.5")
         self.assertIsNotNone(r)
@@ -108,14 +108,14 @@ class TestGetTrackRecord(unittest.TestCase):
 
     def test_get_track_record_none_sin_datos(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", self._mock_stats()):
             r = sc.get_track_record("corners", "Premier League", "Over 9.5")
         self.assertIsNone(r)  # corners: 3 muestras < _MIN_MUESTRAS_A=5
 
     def test_get_track_record_cache_none(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", None):
             r = sc.get_track_record("goles", "Premier League", "Over 2.5")
         self.assertIsNone(r)
@@ -138,7 +138,7 @@ class TestGetResumenGlobal(unittest.TestCase):
 
     def test_get_resumen_global_con_datos(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", self._mock_stats()):
             r = sc.get_resumen_global()
         # (7+13)/(10+20) = 20/30 = 66.67% → round = 67%
@@ -149,7 +149,7 @@ class TestGetResumenGlobal(unittest.TestCase):
 
     def test_get_resumen_global_sin_datos(self):
         from unittest.mock import patch
-        import stats_colectivas as sc
+        import backend.stats_colectivas as sc
         with patch.object(sc, "_cache_stats", None):
             self.assertEqual(sc.get_resumen_global(), "")
 
@@ -161,28 +161,28 @@ class TestAjustarConfianza(unittest.TestCase):
     def test_baja_si_mal_track_record(self):
         import sys, os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
-        from engine import _ajustar_confianza_por_track_record
+        from backend.engine import _ajustar_confianza_por_track_record
         tr = {"nivel": "B", "foco": "corners", "liga": "X", "rango": None,
               "muestras": 10, "aciertos": 4, "tasa": 0.40}
         conf, _ = _ajustar_confianza_por_track_record("corners", "X", "Over 9.5", "Alta 🟢", tr)
         self.assertEqual(conf, "Media 🟡")
 
     def test_sube_si_buen_track_record(self):
-        from engine import _ajustar_confianza_por_track_record
+        from backend.engine import _ajustar_confianza_por_track_record
         tr = {"nivel": "B", "foco": "goles", "liga": "X", "rango": None,
               "muestras": 10, "aciertos": 8, "tasa": 0.80}
         conf, _ = _ajustar_confianza_por_track_record("goles", "X", "Over 2.5", "Media 🟡", tr)
         self.assertEqual(conf, "Alta 🟢")
 
     def test_sin_cambio_en_rango_medio(self):
-        from engine import _ajustar_confianza_por_track_record
+        from backend.engine import _ajustar_confianza_por_track_record
         tr = {"nivel": "A", "foco": "goles", "liga": None, "rango": None,
               "muestras": 6, "aciertos": 3, "tasa": 0.55}
         conf, _ = _ajustar_confianza_por_track_record("goles", None, None, "Media 🟡", tr)
         self.assertEqual(conf, "Media 🟡")
 
     def test_none_track_record(self):
-        from engine import _ajustar_confianza_por_track_record
+        from backend.engine import _ajustar_confianza_por_track_record
         conf, tr = _ajustar_confianza_por_track_record("corners", "X", "Over 9.5", "Alta 🟢", None)
         self.assertEqual(conf, "Alta 🟢")
         self.assertIsNone(tr)

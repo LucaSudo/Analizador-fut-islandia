@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bac
 os.environ.setdefault("SUPABASE_URL", "https://dummy-test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "dummy-key")
 
-import session_store
+from backend import session_store
 
 
 class TestSessionOwnership(unittest.TestCase):

@@ -10,7 +10,7 @@ for _p in (_BACKEND, _HERE):
         sys.path.insert(0, _p)
 
 try:
-    import cache_manager as _cm
+    from backend import cache_manager as _cm
 except ImportError:
     _cm = None
 
