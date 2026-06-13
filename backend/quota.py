@@ -114,3 +114,31 @@ def devolver_combinada(user_id: str):
         return
     uso = _get_uso(user_id)
     _upsert_uso(user_id, uso.get("analisis", 0), max(0, uso.get("combinadas", 0) - 1))
+
+
+def get_estado(user_id: str) -> dict:
+    """Estado de cuota del día SIN consumir cupo. Para mostrar en la UI.
+
+    {analisis_usados, analisis_limite, combinadas_usados, combinadas_limite,
+     ilimitado}. Admin → ilimitado=True. Anónimo ('default') → usados 0.
+    """
+    if user_id in _ADMIN_IDS:
+        return {
+            "analisis_usados": 0, "analisis_limite": LIMITE_ANALISIS,
+            "combinadas_usados": 0, "combinadas_limite": LIMITE_COMBINADAS,
+            "ilimitado": True,
+        }
+    if user_id == "default":
+        return {
+            "analisis_usados": 0, "analisis_limite": LIMITE_ANALISIS,
+            "combinadas_usados": 0, "combinadas_limite": LIMITE_COMBINADAS,
+            "ilimitado": False,
+        }
+    uso = _get_uso(user_id)
+    return {
+        "analisis_usados":   uso.get("analisis", 0),
+        "analisis_limite":   LIMITE_ANALISIS,
+        "combinadas_usados": uso.get("combinadas", 0),
+        "combinadas_limite": LIMITE_COMBINADAS,
+        "ilimitado":         False,
+    }

@@ -1013,6 +1013,35 @@ async def serve_frontend():
     return FileResponse(html_path, media_type="text/html")
 
 
+# ── Páginas legales (estáticas) ──────────────────────────────────────
+_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "legal")
+_LEGAL_PAGES = {"terminos", "privacidad", "datos"}
+
+
+def _serve_legal(nombre: str) -> FileResponse:
+    if nombre not in _LEGAL_PAGES:
+        raise HTTPException(status_code=404, detail="Página no encontrada")
+    path = os.path.join(_LEGAL_DIR, f"{nombre}.html")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Página no encontrada")
+    return FileResponse(path, media_type="text/html")
+
+
+@app.get("/terminos", include_in_schema=False)
+async def legal_terminos():
+    return _serve_legal("terminos")
+
+
+@app.get("/privacidad", include_in_schema=False)
+async def legal_privacidad():
+    return _serve_legal("privacidad")
+
+
+@app.get("/datos", include_in_schema=False)
+async def legal_datos():
+    return _serve_legal("datos")
+
+
 @app.get("/api/health")
 async def health():
     return {
@@ -1028,6 +1057,17 @@ async def get_fixtures():
     if not texto:
         raise HTTPException(status_code=503, detail="Fixtures no cargados aún")
     return {"fixtures": texto}
+
+
+@app.get("/api/quota")
+async def get_quota(http_request: Request):
+    """Uso de cuota del día (solo lectura, no consume). Para la barra de uso."""
+    auth_header = http_request.headers.get("Authorization")
+    try:
+        user_id = verificar_token(auth_header)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return quota.get_estado(user_id)
 
 
 @app.get("/api/stats")

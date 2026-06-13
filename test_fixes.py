@@ -16,7 +16,22 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Saltear pruebas [LIVE] con --skip-live. Cuando no se pasa el flag, cada
+# test [LIVE] verifica conectividad real (curl_cffi a SofaScore) y se saltea
+# por sí mismo si no hay red, en vez de fallar (sandbox/CI offline).
 SKIP_LIVE = "--skip-live" in sys.argv
+
+
+def _sofascore_alcanzable(sesion) -> bool:
+    """True si SofaScore responde por el mismo canal (curl_cffi) que usa
+    el engine. Evita falsos negativos de un probe TCP que no refleja si
+    el HTTP/TLS real está permitido."""
+    try:
+        r = sesion.get("https://www.sofascore.com/api/v1/sport/football/categories",
+                        timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 # ────────────────────────────────────────────────────────────────────
 # SUITE 1 — Bug #0o: _system_prompt_con_tz()
@@ -304,6 +319,9 @@ class TestObtenerPartidosEquipo(unittest.TestCase):
         proxy = os.getenv("PROXY_URL", "")
         if proxy:
             sesion.proxies = {"http": proxy, "https": proxy}
+
+        if not _sofascore_alcanzable(sesion):
+            self.skipTest("sin conexión a SofaScore (entorno offline)")
 
         # Liga 1. deild karla: id=675, temporada buscar en LIGAS
         # Usamos el endpoint de equipo directamente

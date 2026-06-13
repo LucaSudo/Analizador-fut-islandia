@@ -75,6 +75,7 @@
   </script>
 
   <style>
+    html { scroll-behavior: smooth; }
     .material-symbols-outlined {
       font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
     }
@@ -123,10 +124,9 @@
     <div class="flex justify-between items-center px-gutter py-4 max-w-[1280px] mx-auto">
       <span class="font-display-lg text-primary tracking-tighter text-[24px]">ScoutAI</span>
       <div class="hidden md:flex gap-8">
-        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Markets</a>
-        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Predictions</a>
-        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Insights</a>
-        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Pricing</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#features">Cómo funciona</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#planes">Planes</a>
+        <a class="text-on-surface-variant hover:text-primary transition-colors font-body-md cursor-pointer" onclick="openAuth('login')">Ingresá</a>
       </div>
       <div class="flex items-center gap-4">
         <button class="hidden sm:block text-on-surface-variant hover:text-primary transition-all font-body-md"
@@ -194,7 +194,7 @@
   </section>
 
   <!-- Features -->
-  <section class="py-24 bg-surface-container-lowest relative overflow-hidden">
+  <section id="features" class="py-24 bg-surface-container-lowest relative overflow-hidden scroll-mt-24">
     <div class="max-w-[1280px] mx-auto px-gutter">
       <div class="text-center mb-16">
         <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Potenciá tus decisiones</h2>
@@ -235,7 +235,7 @@
   </section>
 
   <!-- Pricing -->
-  <section class="py-24 relative">
+  <section id="planes" class="py-24 relative scroll-mt-24">
     <div class="max-w-[1280px] mx-auto px-gutter">
       <div class="text-center mb-16">
         <h2 class="font-headline-lg text-headline-sm md:text-headline-lg mb-4">Planes diseñados para vos</h2>
@@ -337,10 +337,10 @@
         <p class="text-on-surface-variant font-body-md text-sm">© 2026 ScoutAI Intelligence Platform. All rights reserved.</p>
       </div>
       <div class="flex gap-8 flex-wrap justify-center">
-        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Términos</a>
-        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Privacidad</a>
-        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">Datos</a>
-        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="#">API Access</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="/terminos" target="_blank" rel="noopener">Términos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="/privacidad" target="_blank" rel="noopener">Privacidad</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="/datos" target="_blank" rel="noopener">Datos</a>
+        <a class="text-on-surface-variant hover:text-neon-accent transition-all font-body-md text-sm" href="mailto:lucasileoni694@gmail.com">Soporte</a>
       </div>
     </div>
   </footer>
@@ -430,29 +430,25 @@
         </button>
       </form>
 
-      <!-- Social (decorativo) -->
+      <!-- Social -->
       <div class="mt-8">
         <div class="relative flex items-center justify-center mb-6">
           <div class="w-full border-t border-outline-variant/20"></div>
           <span class="absolute bg-charcoal px-4 font-label-caps text-[10px] text-outline">O CONTINÚA CON</span>
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
-            <span class="font-label-caps text-[11px] text-on-surface-variant">GOOGLE</span>
-          </button>
-          <button type="button" class="flex items-center justify-center py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
-            <span class="material-symbols-outlined text-xl text-on-surface-variant mr-1">terminal</span>
-            <span class="font-label-caps text-[11px] text-on-surface-variant">API KEY</span>
-          </button>
-        </div>
+        <button type="button" onclick="loginGoogle()"
+                class="w-full flex items-center justify-center gap-2 py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg hover:bg-surface-variant/30 transition-all active:scale-95">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.46 14.97.5 12 .5A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 4.75 12 4.75z"/></svg>
+          <span class="font-label-caps text-[11px] text-on-surface-variant">GOOGLE</span>
+        </button>
       </div>
     </div>
 
     <!-- Footer links -->
     <footer class="mt-8 flex gap-6 opacity-60 hover:opacity-100 transition-opacity">
-      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Términos</a>
-      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Privacidad</a>
-      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="#">Soporte</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="/terminos" target="_blank" rel="noopener">Términos</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="/privacidad" target="_blank" rel="noopener">Privacidad</a>
+      <a class="font-label-caps text-[10px] tracking-widest text-on-surface-variant hover:text-primary uppercase transition-colors" href="mailto:lucasileoni694@gmail.com">Soporte</a>
     </footer>
   </main>
 
@@ -482,11 +478,15 @@
         <span class="material-symbols-outlined text-[20px]">dashboard</span>
         <span class="font-label-caps text-label-caps">Dashboard</span>
       </a>
-      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
-        <span class="material-symbols-outlined text-[20px]">settings_input_component</span>
+      <a id="nav-live"
+         class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer"
+         onclick="showView('live')" href="#">
+        <span class="material-symbols-outlined text-[20px]">sports_soccer</span>
         <span class="font-label-caps text-label-caps">Live Match</span>
       </a>
-      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+      <a id="nav-combos"
+         class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer"
+         onclick="showView('combos')" href="#">
         <span class="material-symbols-outlined text-[20px]" style="font-variation-settings:'FILL' 1;">auto_awesome</span>
         <span class="font-label-caps text-label-caps">AI Combos</span>
       </a>
@@ -496,21 +496,25 @@
         <span class="material-symbols-outlined text-[20px]">history</span>
         <span class="font-label-caps text-label-caps">History</span>
       </a>
-      <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer" href="#">
+      <a id="nav-settings"
+         class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer"
+         onclick="showView('settings')" href="#">
         <span class="material-symbols-outlined text-[20px]">settings</span>
         <span class="font-label-caps text-label-caps">Settings</span>
       </a>
     </nav>
 
     <div class="mt-auto p-4 space-y-4">
-      <button class="w-full py-3 bg-primary text-on-primary font-label-caps text-[12px] rounded-lg hover:opacity-90 active:scale-95 transition-all"
+      <button onclick="upgradeSoon()"
+              class="w-full py-3 bg-primary text-on-primary font-label-caps text-[12px] rounded-lg hover:opacity-90 active:scale-95 transition-all"
               style="box-shadow:0 4px 12px rgba(164,230,255,0.2)">
         Upgrade to Elite
       </button>
       <div class="flex flex-col gap-1 pt-4 border-t border-glass-border">
-        <a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer" href="#">
+        <a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+           href="mailto:lucasileoni694@gmail.com">
           <span class="material-symbols-outlined text-[20px]">help</span>
-          <span class="text-[13px]">Support</span>
+          <span class="text-[13px]">Soporte</span>
         </a>
         <button onclick="logout()"
                 class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-error transition-colors w-full text-left">
@@ -595,11 +599,11 @@
             </button>
           </div>
           <div class="flex gap-4 mt-4">
-            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
-              <span class="material-symbols-outlined text-[14px]">trending_up</span> Hot Matches
+            <button onclick="quickAction('hot')" class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">trending_up</span> Partidos de hoy
             </button>
-            <button class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
-              <span class="material-symbols-outlined text-[14px]">psychology</span> High Confidence
+            <button onclick="quickAction('combo')" class="text-[11px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">psychology</span> Combinada del día
             </button>
           </div>
         </div>
@@ -746,6 +750,95 @@
 
     </div><!-- /#stats-panel -->
 
+    <!-- Live Match (vista) -->
+    <div id="live-panel" class="hidden" style="flex:1;overflow-y:auto;padding:24px;">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="font-headline-lg text-[20px] text-on-surface">Partidos en vivo y de hoy</h2>
+          <p class="text-on-surface-variant text-[13px] mt-1">Se actualiza solo cada 60 segundos · tocá un partido para analizarlo</p>
+        </div>
+        <button onclick="loadLive()" class="text-[12px] font-label-caps text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+          <span class="material-symbols-outlined text-[16px]">refresh</span>
+          <span class="hidden sm:inline">Actualizar</span>
+        </button>
+      </div>
+      <div id="live-body" class="space-y-6">
+        <div class="text-center py-10 text-on-surface-variant">Cargando partidos…</div>
+      </div>
+    </div><!-- /#live-panel -->
+
+    <!-- AI Combos (vista) -->
+    <div id="combos-panel" class="hidden" style="flex:1;overflow-y:auto;padding:24px;">
+      <div class="mb-6">
+        <h2 class="font-headline-lg text-[20px] text-on-surface">Combinadas con IA</h2>
+        <p class="text-on-surface-variant text-[13px] mt-1">Elegí una opción y la armo en el chat con los picks de mayor confianza</p>
+      </div>
+
+      <button onclick="lanzarCombo('')"
+              class="w-full glass-panel rounded-xl p-6 mb-6 flex items-center gap-4 hover:border-primary/50 border border-transparent transition-all text-left active:scale-[0.99]">
+        <div class="bg-neon-accent/20 p-3 rounded-xl">
+          <span class="material-symbols-outlined text-neon-accent text-[28px]" style="font-variation-settings:'FILL' 1;">bolt</span>
+        </div>
+        <div>
+          <p class="font-headline-lg text-[18px] text-on-surface">Mejor combinada del día</p>
+          <p class="text-[13px] text-on-surface-variant">Reviso todos los partidos disponibles y elijo los picks más sólidos</p>
+        </div>
+      </button>
+
+      <h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-3">Por liga</h3>
+      <div id="combos-ligas" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+    </div><!-- /#combos-panel -->
+
+    <!-- Settings (vista) -->
+    <div id="settings-panel" class="hidden" style="flex:1;overflow-y:auto;padding:24px;">
+      <div class="mb-6">
+        <h2 class="font-headline-lg text-[20px] text-on-surface">Ajustes</h2>
+        <p class="text-on-surface-variant text-[13px] mt-1">Tu cuenta y preferencias</p>
+      </div>
+
+      <div class="max-w-2xl space-y-4">
+        <!-- Cuenta -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-4">Cuenta</h3>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-[13px] text-on-surface-variant">Email</span>
+            <span id="set-email" class="text-[14px] text-on-surface">—</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-t border-glass-border">
+            <span class="text-[13px] text-on-surface-variant">Nombre</span>
+            <span id="set-nombre" class="text-[14px] text-on-surface">—</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-t border-glass-border">
+            <span class="text-[13px] text-on-surface-variant">Zona horaria</span>
+            <span id="set-tz" class="text-[14px] text-on-surface">—</span>
+          </div>
+        </div>
+
+        <!-- Cuota -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-4">Uso de hoy (plan gratuito)</h3>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-[13px] text-on-surface-variant">Análisis</span>
+            <span id="set-quota-analisis" class="text-[14px] font-data-point text-primary">—</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-t border-glass-border">
+            <span class="text-[13px] text-on-surface-variant">Combinadas</span>
+            <span id="set-quota-combinadas" class="text-[14px] font-data-point text-primary">—</span>
+          </div>
+        </div>
+
+        <!-- Sesión -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-4">Sesión</h3>
+          <button onclick="borrarHistorial()"
+                  class="w-full py-3 rounded-lg border border-error/40 text-error font-label-caps text-[12px] hover:bg-error/10 transition-all active:scale-[0.98]">
+            Borrar historial de esta sesión
+          </button>
+          <p class="text-[11px] text-on-surface-variant mt-2">Elimina la conversación actual del chat. No afecta tus predicciones guardadas.</p>
+        </div>
+      </div>
+    </div><!-- /#settings-panel -->
+
   </main>
 </div><!-- /#app -->
 
@@ -759,7 +852,6 @@
   const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
   let _session    = null;
   let _authMode   = "login";
-  let _usageCount = 0;
 
   // ── Auth state ────────────────────────────────────────────────────────
   _sb.auth.onAuthStateChange((event, session) => {
@@ -779,11 +871,12 @@
     const avatar = document.getElementById("user-avatar");
     if (avatar) avatar.textContent = nombre.charAt(0).toUpperCase();
     document.getElementById("user-label").textContent = nombre;
-    _usageCount = 0;
-    updateUsageBar();
+    showView("dashboard");
+    refreshQuota();
   }
 
   function exitApp() {
+    stopLive();  // cortar auto-refresh de Live Match si estaba activo
     document.getElementById("app").classList.add("hidden");
     document.getElementById("auth-overlay").classList.add("hidden");
     document.getElementById("landing").classList.remove("hidden");
@@ -888,16 +981,19 @@
 
   async function logout() { await _sb.auth.signOut(); }
 
-  // ── Barra de uso ──────────────────────────────────────────────────────
-  const USAGE_MAX = 3;
-
-  function updateUsageBar() {
-    const pct = Math.min((_usageCount / USAGE_MAX) * 100, 100);
-    const bar = document.getElementById("usage-bar");
-    const lbl = document.getElementById("usage-label");
-    if (bar) bar.style.width = pct + "%";
-    if (lbl) lbl.textContent = `${_usageCount}/${USAGE_MAX} Usados`;
+  // Login con Google (OAuth). Requiere tener habilitado el provider Google
+  // en Supabase (Authentication → Providers). Si no está, Supabase devuelve
+  // un error que mostramos en el cartel de auth.
+  async function loginGoogle() {
+    clearAuthMsg();
+    const { error } = await _sb.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) showAuthMsg("No se pudo iniciar con Google: " + error.message, "error");
   }
+
+  // La barra de uso se llena desde el backend en refreshQuota() (más abajo).
 
   // ── Chat ──────────────────────────────────────────────────────────────
   let sessionId = "s_" + Math.random().toString(36).slice(2, 8);
@@ -1078,13 +1174,11 @@
             removeStatus();
             if (data.type === "analysis") {
               addBotBubble("analysis", data.content, data.header);
-              _usageCount++;
-              updateUsageBar();
+              refreshQuota();
               applyWidgets(data.widgets);
             } else if (data.type === "combinada") {
               addBotBubble("combinada", data.content);
-              _usageCount++;
-              updateUsageBar();
+              refreshQuota();
             } else {
               addBotBubble("chat", data.content);
             }
@@ -1207,29 +1301,47 @@
     revealObserver.observe(section);
   });
 
-    // ── Vista History / Dashboard ─────────────────────────────────────
+    // ── Navegación entre vistas ───────────────────────────────────────
+    // Mapa vista → {panel, nav, display, onShow}. Un solo lugar para
+    // alternar paneles y marcar el ítem activo del sidebar.
+    const VIEWS = {
+      dashboard: { panel: 'dashboard-body', nav: 'nav-dashboard', display: 'flex' },
+      live:      { panel: 'live-panel',     nav: 'nav-live',      display: 'block', onShow: startLive,  onHide: stopLive },
+      combos:    { panel: 'combos-panel',   nav: 'nav-combos',    display: 'block', onShow: renderCombos },
+      history:   { panel: 'stats-panel',    nav: 'nav-history',   display: 'flex',  onShow: loadStats },
+      settings:  { panel: 'settings-panel', nav: 'nav-settings',  display: 'block', onShow: renderSettings },
+    };
+
+    const _NAV_ACTIVE   = 'flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-4 border-primary transition-all duration-300 cursor-pointer';
+    const _NAV_INACTIVE = 'flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer';
+    let _currentView = 'dashboard';
 
     function showView(name) {
-      const dashBody   = document.getElementById('dashboard-body');
-      const statsPanel = document.getElementById('stats-panel');
-      const navDash    = document.getElementById('nav-dashboard');
-      const navHist    = document.getElementById('nav-history');
+      if (!VIEWS[name]) name = 'dashboard';
+      // Hook de salida de la vista anterior (ej: parar auto-refresh de Live)
+      const prev = VIEWS[_currentView];
+      if (prev && prev.onHide && name !== _currentView) prev.onHide();
 
-      const ACTIVE   = 'flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-4 border-primary transition-all duration-300 cursor-pointer';
-      const INACTIVE = 'flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/30 transition-all duration-300 cursor-pointer';
-
-      if (name === 'history') {
-        dashBody.style.display = 'none';
-        statsPanel.style.display = 'flex';
-        navHist.className = ACTIVE;
-        navDash.className = INACTIVE;
-        loadStats();
-      } else {
-        statsPanel.style.display = 'none';
-        dashBody.style.display = 'flex';
-        navDash.className = ACTIVE;
-        navHist.className = INACTIVE;
+      for (const [key, v] of Object.entries(VIEWS)) {
+        const panel = document.getElementById(v.panel);
+        const nav   = document.getElementById(v.nav);
+        const activo = key === name;
+        if (panel) {
+          // .hidden usa !important, así que togglear la clase es lo que
+          // realmente muestra/oculta; el style.display fija el modo de layout.
+          panel.classList.toggle('hidden', !activo);
+          if (activo) panel.style.display = v.display;
+        }
+        if (nav) nav.className = activo ? _NAV_ACTIVE : _NAV_INACTIVE;
       }
+      _currentView = name;
+      const v = VIEWS[name];
+      if (v.onShow) v.onShow();
+    }
+
+    // "Upgrade to Elite" — el plan Pro todavía no existe.
+    function upgradeSoon() {
+      alert("Plan Pro — próximamente 🚀\nPor ahora disfrutá del plan gratuito: 2 análisis y 1 combinada por día.");
     }
 
     async function loadStats() {
@@ -1345,6 +1457,191 @@
             <div class="text-2xl flex-shrink-0">${icono}</div>
           </div>`;
       }).join('');
+    }
+
+    // ── Helper de token ───────────────────────────────────────────────
+    async function _token() {
+      const { data: { session } } = await _sb.auth.getSession();
+      return session?.access_token || "";
+    }
+
+    // ── Cuota real (barra de uso + Settings) ──────────────────────────
+    async function refreshQuota() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/quota`, {
+          headers: { "Authorization": `Bearer ${await _token()}` }
+        });
+        if (!res.ok) return;
+        const q = await res.json();
+        const bar = document.getElementById("usage-bar");
+        const lbl = document.getElementById("usage-label");
+        if (q.ilimitado) {
+          if (bar) bar.style.width = "100%";
+          if (lbl) lbl.textContent = "Ilimitado";
+        } else {
+          const pct = q.analisis_limite ? Math.min((q.analisis_usados / q.analisis_limite) * 100, 100) : 0;
+          if (bar) bar.style.width = pct + "%";
+          if (lbl) lbl.textContent = `${q.analisis_usados}/${q.analisis_limite} análisis`;
+        }
+        // Settings (si está montado)
+        const sa = document.getElementById("set-quota-analisis");
+        const sc = document.getElementById("set-quota-combinadas");
+        if (sa) sa.textContent = q.ilimitado ? "Ilimitado" : `${q.analisis_usados} / ${q.analisis_limite}`;
+        if (sc) sc.textContent = q.ilimitado ? "Ilimitado" : `${q.combinadas_usados} / ${q.combinadas_limite}`;
+      } catch (e) { /* silencioso: la barra queda en su último valor */ }
+    }
+
+    // ── Live Match ────────────────────────────────────────────────────
+    let _liveTimer = null;
+
+    function startLive() {
+      loadLive();
+      _liveTimer = setInterval(loadLive, 60000);
+    }
+    function stopLive() {
+      if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; }
+    }
+
+    async function loadLive() {
+      const body = document.getElementById("live-body");
+      try {
+        const res = await fetch(`${BASE_URL}/api/fixtures`);
+        if (!res.ok) throw new Error("no fixtures");
+        const data = await res.json();
+        renderLive(parseFixtures(data.fixtures || ""));
+      } catch (e) {
+        body.innerHTML = '<div class="text-center py-10 text-on-surface-variant">Los partidos se están cargando, probá en un momento.</div>';
+      }
+    }
+
+    // Parsea el texto de /api/fixtures: cabeceras "Liga:" + líneas "- A vs B (fecha [TAG])".
+    function parseFixtures(texto) {
+      const out = [];
+      let liga = "";
+      for (const raw of texto.split("\n")) {
+        const ls = raw.trim();
+        if (!ls || ls.includes("===")) continue;
+        if (ls.endsWith(":") && !ls.includes(" vs ")) { liga = ls.slice(0, -1).trim(); continue; }
+        if (!ls.includes(" vs ")) continue;
+        const m = ls.replace(/^[-\s]+/, "").match(/^(.+?)\s+vs\s+(.+?)(?:\s*\(([^)]*)\))?$/);
+        if (!m) continue;
+        const meta = m[3] || "";
+        out.push({
+          liga,
+          home: m[1].trim(),
+          away: m[2].trim().replace(/\s*\[(HOY|EN CURSO)\].*$/i, "").trim(),
+          fecha: meta.replace(/\[(HOY|EN CURSO)\]/g, "").trim(),
+          enCurso: /\[EN CURSO\]/i.test(ls),
+          hoy: /\[HOY\]/i.test(ls),
+        });
+      }
+      return out;
+    }
+
+    function renderLive(matches) {
+      const body = document.getElementById("live-body");
+      if (!matches.length) {
+        body.innerHTML = '<div class="text-center py-10 text-on-surface-variant">No hay partidos próximos cargados ahora mismo.</div>';
+        return;
+      }
+      // En vivo primero, luego hoy, luego el resto; agrupados por liga preservando ese orden.
+      const orden = m => m.enCurso ? 0 : (m.hoy ? 1 : 2);
+      matches.sort((a, b) => orden(a) - orden(b));
+      const porLiga = {};
+      for (const m of matches) (porLiga[m.liga] = porLiga[m.liga] || []).push(m);
+
+      body.innerHTML = Object.entries(porLiga).map(([liga, ms]) => `
+        <div>
+          <h3 class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-2">${escapeHtml(liga)}</h3>
+          <div class="space-y-2">
+            ${ms.map(m => `
+              <div onclick="analizarPartido(${JSON.stringify(m.home).replace(/"/g,'&quot;')}, ${JSON.stringify(m.away).replace(/"/g,'&quot;')})"
+                   class="glass-panel rounded-xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:border-primary/50 border border-transparent transition-all active:scale-[0.99]">
+                <div class="flex items-center gap-3 min-w-0">
+                  ${m.enCurso
+                    ? '<span class="flex items-center gap-1 text-[10px] font-label-caps text-neon-accent uppercase shrink-0"><span class="w-2 h-2 rounded-full bg-neon-accent animate-pulse"></span>En vivo</span>'
+                    : (m.hoy ? '<span class="text-[10px] font-label-caps text-primary uppercase shrink-0">Hoy</span>' : '')}
+                  <span class="text-[14px] text-on-surface truncate">${escapeHtml(m.home)} <span class="text-on-surface-variant">vs</span> ${escapeHtml(m.away)}</span>
+                </div>
+                <span class="text-[12px] text-on-surface-variant shrink-0">${escapeHtml(m.fecha)}</span>
+              </div>`).join("")}
+          </div>
+        </div>`).join("");
+    }
+
+    // Tocar un partido → precarga el análisis en el chat (no lo dispara solo).
+    function analizarPartido(home, away) {
+      showView("dashboard");
+      const input = document.getElementById("msg-input");
+      input.value = `analizá ${home} vs ${away}`;
+      input.focus();
+    }
+
+    // ── AI Combos ─────────────────────────────────────────────────────
+    const LIGAS_COMBO = [
+      "Premier League", "La Liga", "Serie A", "Bundesliga",
+      "Ligue 1", "Champions League", "Copa Libertadores", "Copa Sudamericana",
+    ];
+
+    function renderCombos() {
+      const grid = document.getElementById("combos-ligas");
+      if (grid.children.length) return;  // ya renderizado
+      grid.innerHTML = LIGAS_COMBO.map(liga => `
+        <button onclick="lanzarCombo(${JSON.stringify(liga).replace(/"/g,'&quot;')})"
+                class="glass-panel rounded-xl p-4 text-left hover:border-primary/50 border border-transparent transition-all active:scale-[0.98]">
+          <span class="material-symbols-outlined text-primary text-[20px]">emoji_events</span>
+          <p class="text-[13px] text-on-surface mt-2">${escapeHtml(liga)}</p>
+        </button>`).join("");
+    }
+
+    function lanzarCombo(liga) {
+      const msg = liga ? `armame una combinada de ${liga}` : "armame la mejor combinada del día";
+      showView("dashboard");
+      const input = document.getElementById("msg-input");
+      input.value = msg;
+      send();
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────
+    function renderSettings() {
+      const u = _session?.user;
+      document.getElementById("set-email").textContent  = u?.email || "—";
+      document.getElementById("set-nombre").textContent = u?.user_metadata?.nombre || (u?.email ? u.email.split("@")[0] : "—");
+      let tz = "—";
+      try {
+        const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const off = -new Date().getTimezoneOffset() / 60;
+        tz = `${z} (UTC${off >= 0 ? "+" : ""}${off})`;
+      } catch (e) {}
+      document.getElementById("set-tz").textContent = tz;
+      refreshQuota();
+    }
+
+    async function borrarHistorial() {
+      if (!confirm("¿Borrar el historial de esta sesión de chat?")) return;
+      try {
+        const res = await fetch(`${BASE_URL}/api/session/${sessionId}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${await _token()}` }
+        });
+        if (res.ok) {
+          newChat();
+          showView("dashboard");
+        } else {
+          alert("No se pudo borrar el historial (código " + res.status + ").");
+        }
+      } catch (e) {
+        alert("No se pudo borrar el historial: " + e.message);
+      }
+    }
+
+    // ── Quick-actions del chat ────────────────────────────────────────
+    function quickAction(tipo) {
+      const input = document.getElementById("msg-input");
+      input.value = tipo === "hot"
+        ? "qué partidos hay hoy"
+        : "armame una combinada de alta confianza";
+      send();
     }
 </script>
 </body>
