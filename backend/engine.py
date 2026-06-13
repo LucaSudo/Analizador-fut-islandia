@@ -142,15 +142,79 @@ _LIGA_ALIASES: list[tuple[str, list[str]]] = [
     ("francesa",           ["Ligue 1", "Ligue 2"]),
     ("francia",            ["Ligue 1", "Ligue 2"]),
 
-    # ── Champions / Copas ────────────────────────────────────────
+    # ── Champions / Copas europeas ───────────────────────────────
     ("champions league",   ["Champions League"]),
     ("champions",          ["Champions League"]),
     ("uefa champions",     ["Champions League"]),
     ("ucl",                ["Champions League"]),
+    ("europa league",      ["Europa League"]),
+    ("uefa europa",        ["Europa League"]),
+    ("uel",                ["Europa League"]),
+    ("conference league",  ["Conference League"]),
+    ("uefa conference",    ["Conference League"]),
+    ("conference",         ["Conference League"]),
+    ("uecl",               ["Conference League"]),
     ("copa libertadores",  ["Copa Libertadores"]),
     ("libertadores",       ["Copa Libertadores"]),
     ("copa sudamericana",  ["Copa Sudamericana"]),
     ("sudamericana",       ["Copa Sudamericana"]),
+
+    # ── Holanda ──────────────────────────────────────────────────
+    ("eredivisie",         ["Eredivisie"]),
+    ("liga holandesa",     ["Eredivisie"]),
+    ("holandesa",          ["Eredivisie"]),
+    ("holanda",            ["Eredivisie"]),
+    ("paises bajos",       ["Eredivisie"]),
+    ("países bajos",       ["Eredivisie"]),
+
+    # ── Portugal ─────────────────────────────────────────────────
+    ("primeira liga",      ["Primeira Liga"]),
+    ("liga portuguesa",    ["Primeira Liga"]),
+    ("portuguesa",         ["Primeira Liga"]),
+    ("portugal",           ["Primeira Liga"]),
+
+    # ── Inglaterra (segunda) ─────────────────────────────────────
+    ("efl championship",   ["Championship"]),
+    ("championship",       ["Championship"]),
+
+    # ── Turquía ──────────────────────────────────────────────────
+    ("super lig",          ["Süper Lig"]),
+    ("süper lig",          ["Süper Lig"]),
+    ("superliga turca",    ["Süper Lig"]),
+    ("liga turca",         ["Süper Lig"]),
+    ("turca",              ["Süper Lig"]),
+    ("turquia",            ["Süper Lig"]),
+    ("turquía",            ["Süper Lig"]),
+
+    # ── Brasil ───────────────────────────────────────────────────
+    ("brasileirao serie a",["Brasileirão Série A"]),
+    ("brasileirão",        ["Brasileirão Série A"]),
+    ("brasileirao",        ["Brasileirão Série A"]),
+    ("liga brasilera",     ["Brasileirão Série A"]),
+    ("liga brasileña",     ["Brasileirão Série A"]),
+    ("brasilera",          ["Brasileirão Série A"]),
+    ("brasileña",          ["Brasileirão Série A"]),
+    ("brasilero",          ["Brasileirão Série A"]),
+    ("brasil",             ["Brasileirão Série A"]),
+
+    # ── Estados Unidos ───────────────────────────────────────────
+    ("major league soccer",["MLS"]),
+    ("mls",                ["MLS"]),
+    ("liga de estados unidos", ["MLS"]),
+    ("estados unidos",     ["MLS"]),
+
+    # ── Selecciones (estacionales) ───────────────────────────────
+    ("copa mundial",       ["Copa Mundial"]),
+    ("copa del mundo",     ["Copa Mundial"]),
+    ("mundial",            ["Copa Mundial"]),
+    ("world cup",          ["Copa Mundial"]),
+    ("copa america",       ["Copa América"]),
+    ("copa américa",       ["Copa América"]),
+    ("eurocopa",           ["Eurocopa"]),
+    ("eliminatorias sudamericanas", ["Eliminatorias CONMEBOL"]),
+    ("eliminatorias conmebol", ["Eliminatorias CONMEBOL"]),
+    ("eliminatorias",      ["Eliminatorias CONMEBOL"]),
+    ("clasificatorias",    ["Eliminatorias CONMEBOL"]),
 
     # ── Arabia ───────────────────────────────────────────────────
     ("saudi pro league",   ["Saudi Pro League"]),
@@ -2198,9 +2262,7 @@ Reglas:
      remates, remates_1h, remates_2h, faltas, faltas_1h, faltas_2h,
      corners_antes_{minuto} — corners antes del minuto X (ej: corners_antes_30, corners_antes_60, corners_antes_75)
                              Usá el número exacto que pida el usuario. Cualquier minuto entre 1 y 89 es válido.
-  4. Ligas válidas: Besta deild karla, 1. deild karla, La Liga, Premier League,
-     Serie A, Bundesliga, Ligue 1, Ligue 2, Champions League, Liga 1 Perú,
-     Copa Libertadores, Copa Sudamericana, Saudi Pro League
+  4. Ligas válidas (usá EXACTAMENTE estos nombres): {{LIGAS_VALIDAS}}
 
 ════════════════════════════════════════
 REGLA ABSOLUTA N°7 — DATOS POR TIEMPO DE JUEGO
@@ -2231,13 +2293,11 @@ Si el partido dice [EN CURSO], informá que ya comenzó.
 LIGAS CON ACCESO A DATOS EN TIEMPO REAL
 ════════════════════════════════════════
 
-Tenés acceso a datos en tiempo real de:
-  - Besta deild karla (Islandia - primera división)
-  - 1. deild karla (Islandia - segunda división)
-  - La Liga (España) | Premier League (Inglaterra) | Serie A (Italia)
-  - Bundesliga (Alemania) | Ligue 1 (Francia) | Ligue 2 (Francia - segunda división)
-  - Champions League | Copa Libertadores | Copa Sudamericana
-  - Liga Argentina | Saudi Pro League
+Tenés acceso a datos en tiempo real ÚNICAMENTE de estas ligas/torneos:
+{{LIGAS_DISPONIBLES}}
+Los torneos de selecciones (Mundial, Copa América, Eurocopa, Eliminatorias) solo
+aparecen en la lista cuando están en juego; fuera de esa ventana podés responder
+horarios/fixtures si te preguntan, pero NO hagas predicciones de ellos.
 
 ════════════════════════════════════════
 REGLA ABSOLUTA N°10 — BUSCAR FIXTURE EN TIEMPO REAL
@@ -2697,6 +2757,22 @@ def chat_con_ia_analisis(prompt_analisis: str, session_id: str, datos_sofascore:
 
 # ── Startup ──────────────────────────────────────────────────────────
 
+def _resolver_placeholders_ligas(base: str) -> str:
+    """Rellena {{LIGAS_VALIDAS}} y {{LIGAS_DISPONIBLES}} con las ligas REALMENTE
+    cargadas (LIGAS). Así el prompt nunca anuncia una liga cuyo id falló al
+    cargar, y agregar/quitar ligas no requiere editar el texto del prompt."""
+    nombres = list(LIGAS.keys())
+    if nombres:
+        validas     = ", ".join(nombres)
+        disponibles = "\n".join(f"  - {n}" for n in nombres)
+    else:
+        validas     = "(ninguna cargada todavía)"
+        disponibles = "  - (las ligas se están cargando)"
+    return (base
+            .replace("{{LIGAS_VALIDAS}}", validas)
+            .replace("{{LIGAS_DISPONIBLES}}", disponibles))
+
+
 def initialize_engine(progress_cb=None) -> bool:
     """
     Load fixtures and LIGAS at startup.
@@ -2722,12 +2798,12 @@ def initialize_engine(progress_cb=None) -> bool:
     try:
         fixtures_texto = cargar_proximos_partidos()
         LIGAS.update(_fl.LIGAS)
-        SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + f"\n\n{fixtures_texto}"
+        SYSTEM_PROMPT = _resolver_placeholders_ligas(_BASE_SYSTEM_PROMPT) + f"\n\n{fixtures_texto}"
         if progress_cb: progress_cb("✅ Fixtures cargados")
         result = True
     except Exception as e:
         if progress_cb: progress_cb(f"⚠️ Error cargando fixtures: {e}")
-        SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
+        SYSTEM_PROMPT = _resolver_placeholders_ligas(_BASE_SYSTEM_PROMPT)
         result = False
 
     # Iniciar caché de stats colectivas

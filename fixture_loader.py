@@ -27,24 +27,58 @@ def _inicio_hoy_utc() -> float:
     hoy = _hoy_local()
     return datetime(hoy.year, hoy.month, hoy.day).timestamp() - _TZ_OFFSET * 3600
 
+# Clave = nombre oficial (el que figura en fixtures y en los aliases de engine.py).
+# Valor = uniqueTournament id de SofaScore. La temporada se resuelve sola en runtime
+# (obtener_temporadas_actuales toma la última). Si un id falla, esa liga se ignora
+# silenciosamente y el resto sigue funcionando.
+#
+# Para VALIDAR estos ids o resolver nuevos, correr (con red):
+#     python tools/buscar_ligas_ids.py
 LIGAS_CONFIG = {
+    # ── Islandia ─────────────────────────────────────────────────
     "Besta deild karla": 188,
     "1. deild karla": 675,
+    # ── Top Europa ───────────────────────────────────────────────
     "La Liga": 8,
     "Premier League": 17,
     "Serie A": 23,
     "Bundesliga": 35,
     "Ligue 1": 34,
     "Ligue 2": 182,
+    "Eredivisie": 37,
+    "Primeira Liga": 238,
+    "Championship": 18,
+    "Süper Lig": 52,
+    # ── Copas europeas ───────────────────────────────────────────
     "Champions League": 7,
+    "Europa League": 679,
+    "Conference League": 17015,
+    # ── Sudamérica / Norteamérica ────────────────────────────────
+    "Liga Profesional Argentina": 155,
     "Liga 1 Perú": 406,
+    "Brasileirão Série A": 325,
+    "MLS": 242,
     "Copa Libertadores": 384,
     "Copa Sudamericana": 480,
+    # ── Otras ────────────────────────────────────────────────────
     "Saudi Pro League": 955,
-    # Liga Profesional Argentina (Primera División). Si el ID falla,
-    # obtener_temporadas_actuales() la ignora silenciosamente y el resto
-    # del sistema sigue funcionando.
-    "Liga Profesional Argentina": 155,
+    # ── Selecciones (estacionales: solo aparecen cuando hay partidos) ──
+    "Copa Mundial": 16,
+    "Copa América": 133,
+    "Eurocopa": 1,
+    "Eliminatorias CONMEBOL": 295,
+
+    # ── PENDIENTES DE VERIFICAR ──────────────────────────────────
+    # IDs no confirmados (riesgo de cargar el torneo equivocado). Resolvé los
+    # correctos con `python tools/buscar_ligas_ids.py` y descomentá:
+    # "Liga MX": 0,
+    # "Primera División Chile": 0,
+    # "Primera A Colombia": 0,
+    # "Primera División Uruguay": 0,
+    # "LigaPro Ecuador": 0,
+    # "División Profesional Paraguay": 0,
+    # "División Profesional Bolivia": 0,
+    # "Primera División Venezuela": 0,
 }
 LIGAS = {}
 
