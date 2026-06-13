@@ -4,6 +4,8 @@ load_dotenv()
 from groq import Groq
 import json
 
+load_dotenv()
+
 # Cargar partidos
 with open("datos/partidos_islandia_2024.json", "r", encoding="utf-8") as f:
     data = json.load(f)
