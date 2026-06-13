@@ -10,6 +10,7 @@ API pública (idéntica a la versión con JSON local):
 """
 
 import re
+import time
 from datetime import datetime, timedelta
 
 from supabase_client import db
@@ -442,12 +443,17 @@ def _obtener_stats_evento(sesion, evento_id: int) -> tuple[dict, dict]:
     return info
 
 
-def verificar_predicciones(sesion):
+def verificar_predicciones(sesion, max_segundos: float = 45.0):
     """
     #0n: Recorre TODAS las predicciones pendientes y verifica resultados:
     - Con evento_id → consulta directamente (flujo original).
     - Sin evento_id → busca el partido por (equipo1, equipo2, fecha) en
       SofaScore usando el endpoint de eventos por fecha.
+
+    `max_segundos` acota cuánto tiempo total puede pasar pegándole a SofaScore
+    (cada pendiente sin evento_id hace varias requests). Lo que no llegue a
+    verificarse queda pendiente para la próxima corrida. Evita que el arranque
+    martille SofaScore indefinidamente en cada cold start.
     """
     preds = _predicciones()
     pendientes = [p for p in preds if p.get("resultado_real") is None]
@@ -456,8 +462,13 @@ def verificar_predicciones(sesion):
         print("  Sin predicciones nuevas para verificar.")
         return
 
+    deadline = time.monotonic() + max_segundos
     actualizadas = 0
     for pred in pendientes:
+        if time.monotonic() > deadline:
+            print(f"  ⏱️  Presupuesto de {max_segundos:.0f}s agotado; "
+                  f"el resto queda para la próxima corrida.")
+            break
         evento_id = pred.get("evento_id")
 
         try:

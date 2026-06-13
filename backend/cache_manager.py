@@ -26,6 +26,45 @@ FIXTURES_TTL_HORAS = 2
 LIGAS_TTL_HORAS    = 24
 _FIXTURES_CACHE_KEY = "fixtures_texto"
 _LIGAS_CACHE_KEY    = "ligas_config"
+_VERIFICACION_KEY   = "last_verificacion"
+
+
+# ── Marcador de última verificación de predicciones ──────────────────
+# Permite throttlear verificar_predicciones entre cold starts (en Render free
+# el proceso se reinicia seguido; sin esto correría en cada arranque).
+
+def horas_desde_ultima_verificacion() -> float | None:
+    """Horas desde la última verificación registrada, o None si nunca corrió
+    o si no se puede leer (en cuyo caso conviene correrla)."""
+    try:
+        res = (db.table("partidos_equipo_cache")
+                 .select("updated_at")
+                 .eq("id", _VERIFICACION_KEY)
+                 .execute())
+        if not res.data:
+            return None
+        updated_str = res.data[0]["updated_at"]
+        if updated_str.endswith("Z"):
+            updated_str = updated_str[:-1] + "+00:00"
+        updated = datetime.fromisoformat(updated_str)
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - updated).total_seconds() / 3600.0
+    except Exception as e:
+        print(f"⚠️  Cache read error (last_verificacion): {e}")
+        return None
+
+
+def marcar_verificacion():
+    """Registra el momento de la última verificación de predicciones."""
+    try:
+        db.table("partidos_equipo_cache").upsert({
+            "id":         _VERIFICACION_KEY,
+            "partidos":   "",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        print(f"⚠️  Cache write error (last_verificacion): {e}")
 
 
 # ── Stats de un partido terminado ────────────────────────────────────

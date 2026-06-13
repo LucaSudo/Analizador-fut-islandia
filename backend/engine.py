@@ -2704,9 +2704,17 @@ def initialize_engine(progress_cb=None) -> bool:
     """
     global LIGAS, SYSTEM_PROMPT
 
-    if progress_cb: progress_cb("🔄 Verificando predicciones anteriores...")
+    # Verificar predicciones a lo sumo 1 vez por hora (entre cold starts).
+    # En Render free el proceso se reinicia seguido; sin este throttle,
+    # verificar_predicciones le pegaría a SofaScore en cada arranque.
     try:
-        verificar_predicciones(_nueva_sesion())
+        edad_h = cache_manager.horas_desde_ultima_verificacion()
+        if edad_h is None or edad_h >= 1.0:
+            if progress_cb: progress_cb("🔄 Verificando predicciones anteriores...")
+            verificar_predicciones(_nueva_sesion())
+            cache_manager.marcar_verificacion()
+        else:
+            if progress_cb: progress_cb(f"⏭️ Verificación reciente ({edad_h*60:.0f} min) — salteando")
     except Exception as e:
         if progress_cb: progress_cb(f"⚠️ Error verificando predicciones: {e}")
 

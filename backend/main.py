@@ -65,13 +65,19 @@ def _programar_cleanup_sesiones():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load fixtures and LIGAS at startup in a background thread."""
-    def _init():
-        engine.initialize_engine(progress_cb=_safe_print)
+    """Carga fixtures y LIGAS en un thread de fondo SIN bloquear el arranque.
 
-    thread = threading.Thread(target=_init, daemon=True)
+    Importante: el lifespan corre ANTES de que uvicorn acepte conexiones. Si
+    bloqueáramos acá (p. ej. esperando que terminen de cargar los fixtures),
+    en cada cold start de Render el server no respondería ni /api/health hasta
+    2 min → UptimeRobot/keepalive lo marcan caído. Por eso el init va en un
+    thread daemon y NO lo esperamos: la app sirve al instante y
+    /api/health expone `fixtures_disponibles` para saber si ya terminó."""
+    thread = threading.Thread(
+        target=lambda: engine.initialize_engine(progress_cb=_safe_print),
+        daemon=True,
+    )
     thread.start()
-    thread.join(timeout=120)  # wait up to 2 min for fixtures to load
     _programar_cleanup_sesiones()
     yield
     # Cleanup on shutdown
