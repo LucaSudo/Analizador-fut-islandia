@@ -86,7 +86,7 @@ def obtener_temporadas_actuales(sesion, forzar_refresh: bool = False):
                     "temporada": temporada_id,
                     "rondas": ronda_actual
                 }
-        except:
+        except Exception:
             pass
     LIGAS = ligas
     if _cm is not None and ligas:
@@ -135,7 +135,7 @@ def cargar_proximos_partidos(forzar_refresh: bool = False):
                 if torneo_id in id_a_nombre:
                     nombre = id_a_nombre[torneo_id]
                     partidos_por_fecha.setdefault(nombre, []).append(evento)
-        except:
+        except Exception:
             pass
 
     for nombre_liga, datos in LIGAS.items():
@@ -147,7 +147,7 @@ def cargar_proximos_partidos(forzar_refresh: bool = False):
                 try:
                     resp = fetch_api(sesion, f"{base}/{endpoint}")
                     candidatos.extend(resp.get("events", []))
-                except:
+                except Exception:
                     pass
 
             candidatos.extend(partidos_por_fecha.get(nombre_liga, []))
@@ -190,7 +190,7 @@ def cargar_proximos_partidos(forzar_refresh: bool = False):
                         fecha_str = "por confirmar"
                     estado_str = " [EN CURSO]" if tipo_e == "inprogress" else ""
                     contexto += f"  - {home} vs {away} ({fecha_str}{estado_str})\n"
-        except:
+        except Exception:
             pass
 
     # ── Guardar en caché para los próximos cold starts ───────────────

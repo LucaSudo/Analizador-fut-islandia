@@ -1288,7 +1288,7 @@
         </div>
         <div class="glass-panel rounded-xl p-5 inner-glow">
           <p class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-2">Racha</p>
-          <p class="font-data-point text-[14px] text-on-surface leading-snug">${g.racha_actual || '—'}</p>
+          <p class="font-data-point text-[14px] text-on-surface leading-snug">${escapeHtml(g.racha_actual || '—')}</p>
         </div>
       `;
     }
@@ -1301,8 +1301,8 @@
       }
       body.innerHTML = items.map(r => `
         <tr class="border-t border-glass-border hover:bg-surface-variant/10 transition-colors">
-          <td class="px-4 py-3 font-medium">${r.foco}</td>
-          <td class="px-4 py-3 text-center text-on-surface-variant">${r.total}</td>
+          <td class="px-4 py-3 font-medium">${escapeHtml(r.foco)}</td>
+          <td class="px-4 py-3 text-center text-on-surface-variant">${escapeHtml(r.total)}</td>
           <td class="px-4 py-3 text-center">${_hitBadge(r.hit_rate)}</td>
         </tr>`).join('');
     }
@@ -1315,8 +1315,8 @@
       }
       body.innerHTML = items.map(r => `
         <tr class="border-t border-glass-border hover:bg-surface-variant/10 transition-colors">
-          <td class="px-4 py-3 font-medium">${r.liga || '—'}</td>
-          <td class="px-4 py-3 text-center text-on-surface-variant">${r.total}</td>
+          <td class="px-4 py-3 font-medium">${escapeHtml(r.liga || '—')}</td>
+          <td class="px-4 py-3 text-center text-on-surface-variant">${escapeHtml(r.total)}</td>
           <td class="px-4 py-3 text-center">${_hitBadge(r.hit_rate)}</td>
         </tr>`).join('');
     }
@@ -1333,13 +1333,13 @@
           <div class="glass-panel rounded-xl p-4 flex items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-1 flex-wrap">
-                <span class="font-medium text-on-surface text-sm">${p.equipo1} vs ${p.equipo2}</span>
-                ${p.liga_nombre ? `<span class="text-[10px] font-label-caps text-on-surface-variant uppercase">${p.liga_nombre}</span>` : ''}
+                <span class="font-medium text-on-surface text-sm">${escapeHtml(p.equipo1)} vs ${escapeHtml(p.equipo2)}</span>
+                ${p.liga_nombre ? `<span class="text-[10px] font-label-caps text-on-surface-variant uppercase">${escapeHtml(p.liga_nombre)}</span>` : ''}
               </div>
               <div class="flex items-center gap-3 text-[12px] text-on-surface-variant flex-wrap">
-                <span>${p.foco}</span>
-                ${p.linea_recomendada ? `<span class="text-primary">${p.linea_recomendada}</span>` : ''}
-                ${p.confianza ? `<span class="opacity-70">${p.confianza}</span>` : ''}
+                <span>${escapeHtml(p.foco)}</span>
+                ${p.linea_recomendada ? `<span class="text-primary">${escapeHtml(p.linea_recomendada)}</span>` : ''}
+                ${p.confianza ? `<span class="opacity-70">${escapeHtml(p.confianza)}</span>` : ''}
               </div>
             </div>
             <div class="text-2xl flex-shrink-0">${icono}</div>

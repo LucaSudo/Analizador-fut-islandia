@@ -8,6 +8,7 @@ Proyectos legacy usan HS256 (secreto compartido, SUPABASE_JWT_SECRET).
 import base64
 import json
 import os
+import threading
 from dotenv import load_dotenv
 from jose import jwt, JWTError
 
@@ -17,25 +18,40 @@ _SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 _JWT_SECRET   = os.getenv("SUPABASE_JWT_SECRET", "")
 
 _jwks_keys: list | None = None
+_jwks_lock = threading.Lock()
 
 
-def _load_jwks() -> list:
-    """Carga y cachea las claves públicas del endpoint JWKS de Supabase."""
+def _load_jwks(force_refresh: bool = False) -> list:
+    """Carga y cachea las claves públicas del endpoint JWKS de Supabase.
+    Los fallos NO se cachean (un error transitorio no debe romper el auth
+    hasta el próximo reinicio). force_refresh=True refetchea (rotación de claves)."""
     global _jwks_keys
-    if _jwks_keys is not None:
-        return _jwks_keys
-    try:
-        import httpx
-        url = f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-        resp = httpx.get(url, timeout=10)
-        resp.raise_for_status()
-        _jwks_keys = resp.json().get("keys", [])
-        print(f"[auth] JWKS cargado: {len(_jwks_keys)} clave(s) de Supabase")
-        return _jwks_keys
-    except Exception as e:
-        print(f"⚠️  Error cargando JWKS de Supabase: {e}")
-        _jwks_keys = []
-        return []
+    with _jwks_lock:
+        if _jwks_keys is not None and not force_refresh:
+            return _jwks_keys
+        try:
+            import httpx
+            url = f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+            resp = httpx.get(url, timeout=10)
+            resp.raise_for_status()
+            _jwks_keys = resp.json().get("keys", [])
+            print(f"[auth] JWKS cargado: {len(_jwks_keys)} clave(s) de Supabase")
+            return _jwks_keys
+        except Exception as e:
+            print(f"⚠️  Error cargando JWKS de Supabase: {e}")
+            return _jwks_keys or []
+
+
+def _buscar_clave(kid: str | None) -> dict | None:
+    """Busca la clave por kid; si no está, refetchea el JWKS una vez
+    (cubre rotación de claves de Supabase sin reiniciar el servidor)."""
+    keys = _load_jwks()
+    key = (next((k for k in keys if k.get("kid") == kid), None)
+           if kid else (keys[0] if keys else None))
+    if key is None and kid:
+        keys = _load_jwks(force_refresh=True)
+        key = next((k for k in keys if k.get("kid") == kid), None)
+    return key
 
 
 def _token_header(token: str) -> dict:
@@ -75,9 +91,7 @@ def verificar_token(authorization: str | None) -> str:
             # Asimétrico — proyectos nuevos de Supabase (ES256, RS256, etc.)
             if not _SUPABASE_URL:
                 raise ValueError("SUPABASE_URL no configurado — necesario para ES256/RS256")
-            keys = _load_jwks()
-            key = (next((k for k in keys if k.get("kid") == kid), None)
-                   if kid else (keys[0] if keys else None))
+            key = _buscar_clave(kid)
             if not key:
                 raise ValueError("Clave pública no encontrada en el JWKS de Supabase")
             payload = jwt.decode(token, key, algorithms=[alg],

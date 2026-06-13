@@ -203,22 +203,14 @@ def normalizar_liga(nombre: str | None) -> list[str]:
     for nombre_oficial in LIGAS.keys():
         if n == nombre_oficial.lower():
             return [nombre_oficial]
-    # 2) Match parcial contra nombres oficiales (ej: "saudi pro" en
-    #    "saudi pro league" → matchea). Útil cuando el LLM emite el
-    #    nombre casi-oficial.
-    for nombre_oficial in LIGAS.keys():
-        no = nombre_oficial.lower()
-        if n in no or no in n:
-            # Pero solo si NO matchea un alias más específico abajo.
-            # Lo dejamos como segundo paso, ver más abajo.
-            pass
-    # 3) Match por alias (ordenado por especificidad)
+    # 2) Match por alias (ordenado por especificidad)
     for alias, ligas_oficiales in _LIGA_ALIASES:
         if alias in n:
             # Filtrar las que efectivamente están cargadas en LIGAS
             disponibles = [l for l in ligas_oficiales if l in LIGAS] or ligas_oficiales
             return disponibles
-    # 4) Fallback: match parcial contra ligas oficiales
+    # 3) Fallback: match parcial contra ligas oficiales (ej: "saudi pro"
+    #    en "saudi pro league" — útil cuando el LLM emite el nombre casi-oficial)
     for nombre_oficial in LIGAS.keys():
         no = nombre_oficial.lower()
         if n in no or no in n:
@@ -271,8 +263,9 @@ def detectar_liga_en_mensaje(msg: str) -> list[str]:
 
 
 # ── #0k: detección de estado de liga (receso, sin carga, próximo partido) ──
-# Cache con TTL para no hacer requests repetidos a SofaScore.
-import time as _time_mod
+# Cache con TTL para no hacer requests repetidos a SofaScore. La clave
+# incluye el offset horario del usuario porque el mensaje generado
+# ("hoy a las 15:30", "mañana") depende de su zona horaria.
 _LIGA_ESTADO_CACHE: dict[str, tuple[float, dict]] = {}
 _LIGA_ESTADO_TTL = 3600  # 1 hora
 
@@ -295,9 +288,12 @@ def estado_liga(nombre_oficial: str) -> dict:
                 'proximo_partido': None,
                 'mensaje': "Liga no reconocida."}
 
+    tz_h = get_tz_offset_hours()
+    cache_key = f"{nombre_oficial}|{tz_h}"
+
     # Cache hit
-    cached = _LIGA_ESTADO_CACHE.get(nombre_oficial)
-    if cached and (_time_mod.time() - cached[0]) < _LIGA_ESTADO_TTL:
+    cached = _LIGA_ESTADO_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) < _LIGA_ESTADO_TTL:
         return cached[1]
 
     # 1) Liga no cargada en LIGAS → no es soportada en este momento
@@ -308,7 +304,7 @@ def estado_liga(nombre_oficial: str) -> dict:
             'proximo_partido': None,
             'mensaje': f"{nombre_oficial} no está disponible actualmente (no se cargó al iniciar el servidor).",
         }
-        _LIGA_ESTADO_CACHE[nombre_oficial] = (_time_mod.time(), info)
+        _LIGA_ESTADO_CACHE[cache_key] = (time.time(), info)
         return info
 
     # 2) Liga cargada → consultar próximos eventos a SofaScore
@@ -323,17 +319,15 @@ def estado_liga(nombre_oficial: str) -> dict:
         resp = sesion.get(url, timeout=10)
         if resp.status_code == 200:
             eventos = resp.json().get('events', [])
-            ahora_ts = _time_mod.time()
+            ahora_ts = time.time()
             futuros = [e for e in eventos
                        if e.get('startTimestamp', 0) > ahora_ts]
             if futuros:
                 futuros.sort(key=lambda e: e.get('startTimestamp', 0))
                 e = futuros[0]
                 ts = e['startTimestamp']
-                from datetime import datetime as _dt, timedelta as _td
-                tz_h = get_tz_offset_hours() if 'get_tz_offset_hours' in globals() else _SERVER_TZ_AT_LOAD
-                fecha_local = _dt.utcfromtimestamp(ts) + _td(hours=tz_h)
-                dias = (fecha_local.date() - (_dt.utcnow() + _td(hours=tz_h)).date()).days
+                fecha_local = datetime.utcfromtimestamp(ts) + timedelta(hours=tz_h)
+                dias = (fecha_local.date() - (datetime.utcnow() + timedelta(hours=tz_h)).date()).days
                 proximo = {
                     'home': e.get('homeTeam', {}).get('name', '?'),
                     'away': e.get('awayTeam', {}).get('name', '?'),
@@ -371,7 +365,7 @@ def estado_liga(nombre_oficial: str) -> dict:
                         f"o pausa estacional). No hay partidos próximos confirmados."),
         }
 
-    _LIGA_ESTADO_CACHE[nombre_oficial] = (_time_mod.time(), info)
+    _LIGA_ESTADO_CACHE[cache_key] = (time.time(), info)
     return info
 
 
@@ -788,6 +782,34 @@ def _ajustar_confianza_por_track_record(
     return _NIVELES_CONFIANZA[idx], track_record
 
 
+# Ventaja de localía aplicada al xG del local (y descontada al visitante).
+_HOME_ADV = 1.12
+
+
+def _calcular_xg(prom1: dict, prom2: dict) -> tuple[float, float] | None:
+    """
+    xG esperado de (local, visitante) para el modelo Poisson.
+    Usa Dixon-Coles (ataque propio × debilidad defensiva rival × promedio
+    de liga) cuando hay fuerzas normalizadas; si no, cae al promedio crudo
+    anotados/recibidos. Incluye ventaja de localía. Retorna None si faltan datos.
+    """
+    v1_g = prom1.get("goles");         v2_g = prom2.get("goles")
+    a1_g = prom1.get("goles_against"); a2_g = prom2.get("goles_against")
+    if any(x is None for x in [v1_g, v2_g, a1_g, a2_g]):
+        return None
+    af1 = prom1.get("attack_force"); df1 = prom1.get("defense_force")
+    af2 = prom2.get("attack_force"); df2 = prom2.get("defense_force")
+    lg  = (prom1.get("league_avg_goals", 1.2) + prom2.get("league_avg_goals", 1.2)) / 2
+    if all(x is not None for x in [af1, df1, af2, df2]):
+        # Dixon-Coles: df > 1 = defensa débil → el rival anota más
+        xg1 = af1 * df2 * lg * _HOME_ADV
+        xg2 = af2 * df1 * lg / _HOME_ADV
+    else:
+        xg1 = (v1_g + a2_g) / 2 * _HOME_ADV
+        xg2 = (v2_g + a1_g) / 2 / _HOME_ADV
+    return xg1, xg2
+
+
 def calcular_1x2(xg1: float, xg2: float, max_goles: int = 8) -> tuple:
     """
     Calcula (p_local, p_empate, p_visitante) usando modelo Poisson.
@@ -1089,7 +1111,7 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         # directamente del team endpoint, sin importar la competencia.
         # Así siempre usamos los datos más frescos disponibles.
         n_needed = _MIN_PARTIDOS_ANALISIS - n_orig
-        ahora_ts = _time_mod.time()
+        ahora_ts = time.time()
         cutoff = ahora_ts - MAX_DIAS_HISTORIAL * 86400
 
         partidos_recientes: list = []
@@ -1237,22 +1259,9 @@ def hacer_analisis_completo(equipo1: str, equipo2: str, liga_nombre: str, progre
         ))
 
     # ── 1X2 con modelo Poisson ────────────────────────────────────────
-    v1_g = prom1.get("goles"); v2_g = prom2.get("goles")
-    a1_g = prom1.get("goles_against"); a2_g = prom2.get("goles_against")
-    if all(x is not None for x in [v1_g, v2_g, a1_g, a2_g]):
-        _HOME_ADV = 1.12
-        af1 = prom1.get("attack_force");  df1 = prom1.get("defense_force")
-        af2 = prom2.get("attack_force");  df2 = prom2.get("defense_force")
-        lg  = (prom1.get("league_avg_goals", 1.2) + prom2.get("league_avg_goals", 1.2)) / 2
-        if all(x is not None for x in [af1, df1, af2, df2]):
-            # Dixon-Coles: xG = ataque_propio × debilidad_defensiva_rival × promedio_liga
-            # df > 1 = defensa débil (concede más) → rival anota más ✓
-            # df < 1 = defensa sólida (concede menos) → rival anota menos ✓
-            xg1 = af1 * df2 * lg * _HOME_ADV
-            xg2 = af2 * df1 * lg / _HOME_ADV
-        else:
-            xg1 = (v1_g + a2_g) / 2 * _HOME_ADV
-            xg2 = (v2_g + a1_g) / 2 / _HOME_ADV
+    _xg = _calcular_xg(prom1, prom2)
+    if _xg is not None:
+        xg1, xg2 = _xg
         p_loc, p_emp, p_vis = calcular_1x2(xg1, xg2)
         max_res = max(
             [("1 (local)", p_loc), ("X (empate)", p_emp), ("2 (visitante)", p_vis)],
@@ -1778,10 +1787,13 @@ def _calcular_picks_partido(sesion, eq1: str, eq2: str, liga_nombre: str,
                 })
 
     # ── 1x2 y doble oportunidad ──────────────────────────────────────────────
+    # Mismo modelo que hacer_analisis_completo (_calcular_xg: Dixon-Coles +
+    # ventaja de localía). Antes usaba los promedios crudos de goles como xG,
+    # lo que ignoraba la defensa rival y sesgaba las probabilidades.
     if stats_keys is None:
-        xg1 = prom1.get("goles")
-        xg2 = prom2.get("goles")
-        if xg1 is not None and xg2 is not None:
+        _xg = _calcular_xg(prom1, prom2)
+        if _xg is not None:
+            xg1, xg2 = _xg
             p_loc, p_emp, p_vis = calcular_1x2(xg1, xg2)
             candidatos_1x2 = [
                 ("Local gana",     p_loc),
@@ -2449,32 +2461,6 @@ def _es_respuesta_a_aclaracion(history: list) -> bool:
     return False
 
 
-# Bug #0h: focos válidos como respuesta directa a la pregunta de foco.
-# Si el último assistant pidió foco y el user contesta uno de estos,
-# es confirmación → fuerza ACTION:ANALIZAR.
-_FOCOS_VALIDOS_RE = re.compile(
-    r'\b(?:foco\s+)?(completo|goles?|corners?|'
-    r'tarjetas?(?:\s+(?:amarillas?|rojas?))?|amarillas?|rojas?|'
-    r'remates?(?:\s+al\s+arco)?|faltas?|'
-    r'corners?\s+(?:antes\s+del?\s+(?:min(?:uto)?\s*)?\d+|primer?\s+tiempo|'
-    r'segundo\s+tiempo|1t|2t|1er\s+tiempo|2do\s+tiempo)|'
-    r'1\s*t|2\s*t|primer\s+tiempo|segundo\s+tiempo|1er\s+tiempo|2do\s+tiempo'
-    r')\b',
-    re.IGNORECASE,
-)
-
-
-def _es_respuesta_de_foco(msg: str) -> bool:
-    """True si el msg es PROBABLEMENTE una elección de foco (muy corto
-    + contiene una keyword de foco). No usar sin chequear que el bot
-    haya pedido foco — para eso ya está _es_respuesta_a_aclaracion."""
-    if not msg:
-        return False
-    palabras = msg.strip().split()
-    if len(palabras) > 5:
-        return False
-    return bool(_FOCOS_VALIDOS_RE.search(msg))
-
 def _extraer_equipo_de_historial(history: list) -> str | None:
     msgs = history[-10:]
     msgs_usuario = [m for m in msgs if m["role"] == "user"]
@@ -2589,9 +2575,12 @@ _FOCO_PROMPT = {
 
 def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
                 forzar_action: bool = False, es_confirmacion_partido: bool = False,
-                forzar_fixtures: bool = False, user_id: str = None) -> str:
-    history = session_store.get_history(session_id)
-    session_store.append_message(session_id, "user", mensaje)
+                forzar_fixtures: bool = False, user_id: str = "default") -> str:
+    # get_history valida que la sesión pertenezca a user_id (y devuelve copia):
+    # `history` NO incluye el mensaje actual.
+    history = session_store.get_history(session_id, user_id)
+    session_store.append_message(session_id, "user", mensaje, user_id)
+    mensaje_actual = {"role": "user", "content": mensaje}
 
     contexto_memoria = generar_contexto_memoria(user_id)
     # #0m: usar SYSTEM_PROMPT con bloque de fixtures convertido al TZ del user.
@@ -2604,9 +2593,9 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
     if datos_sofascore:
         mensajes.append({"role": "system", "content": f"DATOS REALES PARA EL ANÁLISIS:\n{datos_sofascore}"})
 
-    if forzar_fixtures and history and not forzar_action:
+    if forzar_fixtures and not forzar_action:
         fixtures_ctx = _obtener_fixtures_texto()
-        mensajes += history[:-1]
+        mensajes += history
         inyeccion = (
             "⚠️ El usuario pregunta sobre horario o rival de un equipo. "
             "Buscá ese equipo ÚNICAMENTE en esta lista:\n\n"
@@ -2618,9 +2607,9 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
             "- NUNCA menciones [HOY], [EN CURSO] ni ningún formato interno en tu respuesta."
         )
         mensajes.append({"role": "system", "content": inyeccion})
-        mensajes.append(history[-1])
-    elif forzar_action and history:
-        mensajes += history[:-1]
+        mensajes.append(mensaje_actual)
+    elif forzar_action:
+        mensajes += history
         if es_confirmacion_partido:
             inyeccion = (
                 "⚠️ EL USUARIO YA CONFIRMÓ. Mirá el HISTORIAL para extraer:\n"
@@ -2658,9 +2647,9 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
                 "  NUNCA emitas ACTION:ANALIZAR sin partido confirmado."
             )
         mensajes.append({"role": "system", "content": inyeccion})
-        mensajes.append(history[-1])
+        mensajes.append(mensaje_actual)
     else:
-        mensajes += history
+        mensajes += history + [mensaje_actual]
 
     respuesta_completa = ""
     stream = _client.chat.completions.create(
@@ -2675,13 +2664,14 @@ def chat_con_ia(mensaje: str, session_id: str, datos_sofascore=None,
         if delta:
             respuesta_completa += delta
 
-    session_store.append_message(session_id, "assistant", respuesta_completa)
+    session_store.append_message(session_id, "assistant", respuesta_completa, user_id)
     return respuesta_completa
 
 
-def chat_con_ia_analisis(prompt_analisis: str, session_id: str, datos_sofascore: str) -> str:
+def chat_con_ia_analisis(prompt_analisis: str, session_id: str, datos_sofascore: str,
+                         user_id: str = "default") -> str:
     """Second Groq call for the actual analysis text (after SofaScore data is fetched)."""
-    history = session_store.get_history(session_id)
+    history = session_store.get_history(session_id, user_id)
     mensajes = [
         # #0m: usar SYSTEM_PROMPT con fixtures en TZ del user.
         {"role": "system", "content": _system_prompt_con_tz()},
@@ -2701,7 +2691,7 @@ def chat_con_ia_analisis(prompt_analisis: str, session_id: str, datos_sofascore:
         if delta:
             respuesta += delta
 
-    session_store.replace_last_assistant(session_id, respuesta)
+    session_store.replace_last_assistant(session_id, respuesta, user_id)
     return respuesta
 
 

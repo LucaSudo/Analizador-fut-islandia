@@ -99,12 +99,18 @@ def check_combinada(user_id: str) -> tuple[bool, str]:
     return True, ""
 
 
-def get_resumen(user_id: str) -> str:
-    """Texto con el uso actual del día, útil para mostrar en la UI."""
-    if user_id == "default":
-        return ""
+def devolver_analisis(user_id: str):
+    """Devuelve un cupo de análisis consumido (ej: el análisis falló por
+    falta de datos). No aplica a admin ni anónimos (no consumen cupo real)."""
+    if user_id in _ADMIN_IDS or user_id == "default":
+        return
     uso = _get_uso(user_id)
-    a = uso.get("analisis", 0)
-    c = uso.get("combinadas", 0)
-    return (f"📊 Uso hoy: {a}/{LIMITE_ANALISIS} análisis · "
-            f"{c}/{LIMITE_COMBINADAS} combinada")
+    _upsert_uso(user_id, max(0, uso.get("analisis", 0) - 1), uso.get("combinadas", 0))
+
+
+def devolver_combinada(user_id: str):
+    """Devuelve un cupo de combinada consumido (ej: no se generaron picks)."""
+    if user_id in _ADMIN_IDS or user_id == "default":
+        return
+    uso = _get_uso(user_id)
+    _upsert_uso(user_id, uso.get("analisis", 0), max(0, uso.get("combinadas", 0) - 1))

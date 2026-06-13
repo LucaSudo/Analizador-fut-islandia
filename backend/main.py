@@ -48,6 +48,21 @@ def _safe_print(msg: str):
         print(msg.encode("ascii", errors="replace").decode("ascii"))
 
 
+_SESSION_CLEANUP_SECS = 6 * 3600  # limpieza periódica de sesiones expiradas
+
+
+def _programar_cleanup_sesiones():
+    try:
+        n = session_store.cleanup_expired()
+        if n:
+            _safe_print(f"[sessions] {n} sesión(es) expiradas eliminadas")
+    except Exception as e:
+        _safe_print(f"[sessions] cleanup falló: {e}")
+    timer = threading.Timer(_SESSION_CLEANUP_SECS, _programar_cleanup_sesiones)
+    timer.daemon = True
+    timer.start()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load fixtures and LIGAS at startup in a background thread."""
@@ -57,6 +72,7 @@ async def lifespan(app: FastAPI):
     thread = threading.Thread(target=_init, daemon=True)
     thread.start()
     thread.join(timeout=120)  # wait up to 2 min for fixtures to load
+    _programar_cleanup_sesiones()
     yield
     # Cleanup on shutdown
     session_store.cleanup_expired()
@@ -64,9 +80,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="⚽ Analizador Fútbol API", version="1.0.0", lifespan=lifespan)
 
+# Orígenes permitidos para CORS. El frontend se sirve desde este mismo
+# dominio, así que en producción alcanza con el dominio propio (+ localhost
+# para desarrollo). Extensible vía env ALLOWED_ORIGINS (separados por coma).
+# NUNCA usar "*" junto con allow_credentials=True: permitiría que cualquier
+# sitio web haga requests autenticados en nombre del usuario.
+_DEFAULT_ORIGINS = (
+    "https://scoutai-b7gn.onrender.com,"
+    "http://localhost:8000,http://127.0.0.1:8000"
+)
+_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", _DEFAULT_ORIGINS).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten in production
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,21 +165,24 @@ _RE_NUEVO_ANALISIS = re.compile(
     r'\b(?:'
     r'agregame|agreg[áa]me|agreg[áa]|sum[áa]|sumame|sum[áa]me|'
     r'a[ñn]ad[íi]|a[ñn]ad[íi]me|a[ñn]adir|'
-    r'analiz[áa] de nuevo|nuevo an[áa]lisis|otro an[áa]lisis|'
-    r'otra vez el an[áa]lisis|volv[éeè] a analizar|'
-    r'de nuevo el an[áa]lisis|reanaliz[áa]|'
-    r'analiz[áa] otro|analiz[áa] el (?:siguiente|otro)|'
+    # Cualquier forma del verbo analizar = pedido explícito de análisis
+    # ("analizá", "analiza", "analizar", "analizalo", "reanalizá",
+    #  "analicemos"...). Cubre también "analizá Boca vs River" después de
+    #  un análisis previo, que antes el guard #0e descartaba por error.
+    # OJO: el sustantivo "análisis" NO matchea (no contiene "analiz+vocal/z").
+    r'(?:re)?analiz\w*|analic\w*|'
+    r'nuevo an[áa]lisis|otro an[áa]lisis|'
+    r'otra vez el an[áa]lisis|de nuevo el an[áa]lisis|'
     r'apost(?:ar|emos)|combinada|acumuladora|'
-    # confirmaciones de análisis nuevo: "hacelo", "dale", "analizá ese", etc.
-    r'hacelo|hac[éeè]lo|analizalo|analiz[áa]lo|'
-    r'analiz[áa] ese|analizá ese|analiz[áa] el partido|analizá el partido|'
+    # confirmaciones de análisis nuevo: "hacelo", "dale", etc.
+    r'hacelo|hac[éeè]lo|'
     r'hac[éeè] el an[áa]lisis|hac[éeè] ese an[áa]lisis|'
     r'and[áa]|dale'
     r')\b|'
     # "sí/ok + verbo de análisis" (prefijo, sin \b al final)
     r'\b(?:s[íi]|ok)\s+(?:haz|hac[éeè]|analiz)|'
     # foco específico nuevo con verbo de futuro/pregunta
-    r'(?:cu[aá]nt[oa]s|hab[rr][áa]|va\s+a\s+haber|hay)\s+'
+    r'(?:cu[aá]nt[oa]s|habr[áa]|va\s+a\s+haber|hay)\s+'
     r'(?:corners?|tarjetas?|goles?|remates?|faltas?|amarillas?|rojas?)',
     re.IGNORECASE,
 )
@@ -265,6 +298,24 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
     def status(msg: str):
         emit("status", {"message": msg})
 
+    # Cupo diario consumido en este request ("analisis" | "combinada" | None).
+    # Si el flujo falla después de consumirlo (sin datos, error, ACTION
+    # malformada), se devuelve para no penalizar al usuario.
+    _cupo = {"tipo": None}
+
+    def _consumir_cupo(tipo: str):
+        _cupo["tipo"] = tipo
+
+    def _cupo_entregado():
+        _cupo["tipo"] = None
+
+    def _reembolsar_cupo():
+        if _cupo["tipo"] == "analisis":
+            quota.devolver_analisis(user_id)
+        elif _cupo["tipo"] == "combinada":
+            quota.devolver_combinada(user_id)
+        _cupo["tipo"] = None
+
     try:
         # Bug #0d: fijar TZ del usuario para todo este request.
         engine.set_request_tz_offset(tz_offset_hours)
@@ -374,8 +425,8 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                             texto = "No encontré partidos programados para hoy en las ligas que sigo."
                 else:
                     texto = "Los fixtures aún se están cargando, intentá en un momento."
-                session_store.append_message(session_id, "user", message)
-                session_store.append_message(session_id, "assistant", texto)
+                session_store.append_message(session_id, "user", message, user_id)
+                session_store.append_message(session_id, "assistant", texto, user_id)
                 emit("response", {"type": "fixture", "content": texto})
                 emit("done", {})
                 return
@@ -387,7 +438,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     partidos = engine._buscar_en_fixtures_cargados(equipo)
 
                 if partidos:
-                    session_store.append_message(session_id, "user", message)
+                    session_store.append_message(session_id, "user", message, user_id)
                     f = partidos[0]
                     es_hoy   = "[HOY]"      in f
                     en_curso = "[EN CURSO]" in f
@@ -395,15 +446,15 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     sufijo   = " (hoy)"       if es_hoy   else ""
                     sufijo  += " — en curso"  if en_curso else ""
                     texto = f"El próximo partido de {equipo} es:\n• {_marcar_local_visitante(f_limpio)}{sufijo}"
-                    session_store.append_message(session_id, "assistant", texto)
+                    session_store.append_message(session_id, "assistant", texto, user_id)
                     emit("response", {"type": "fixture", "content": texto})
                     emit("done", {})
                     return
                 elif len(equipo.split()) > 1:
                     # Equipo multi-palabra sin resultados → respuesta directa
-                    session_store.append_message(session_id, "user", message)
+                    session_store.append_message(session_id, "user", message, user_id)
                     texto = f"No encontré próximos partidos de {equipo} en SofaScore."
-                    session_store.append_message(session_id, "assistant", texto)
+                    session_store.append_message(session_id, "assistant", texto, user_id)
                     emit("response", {"type": "fixture", "content": texto})
                     emit("done", {})
                     return
@@ -442,13 +493,13 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     texto = f"El próximo partido de {equipo} es:\n• {_marcar_local_visitante(f_limpio)}{sufijo}"
                 else:
                     texto = f"No encontré próximos partidos de {equipo} en SofaScore."
-                session_store.replace_last_assistant(session_id, texto)
+                session_store.replace_last_assistant(session_id, texto, user_id)
                 emit("response", {"type": "fixture", "content": texto})
             else:
                 # Bug #0b: ACTION:BUSCAR_FIXTURE sin nombre → emitir mensaje
                 # claro en vez de cerrar la stream en silencio.
                 msg = "No pude identificar el equipo a buscar. Decime el nombre."
-                session_store.replace_last_assistant(session_id, msg)
+                session_store.replace_last_assistant(session_id, msg, user_id)
                 emit("response", {"type": "chat", "content": msg})
             emit("done", {})
             return
@@ -468,7 +519,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     limpia = "Estos son los próximos partidos:\n\n" + "\n".join(lineas)
                 else:
                     limpia = "No tengo fixtures cargados en este momento."
-            session_store.replace_last_assistant(session_id, limpia)
+            session_store.replace_last_assistant(session_id, limpia, user_id)
             emit("response", {"type": "chat", "content": limpia})
             emit("done", {})
             return
@@ -488,7 +539,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 limpia = ("Eso lo cubrí en el análisis de arriba. Si querés "
                           "sumar otro mercado (corners, tarjetas, goles, etc.) "
                           "decime cuál y lo agrego.")
-            session_store.replace_last_assistant(session_id, limpia)
+            session_store.replace_last_assistant(session_id, limpia, user_id)
             emit("response", {"type": "chat", "content": limpia})
             emit("done", {})
             return
@@ -504,7 +555,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 msg = "Estos son los próximos partidos disponibles:\n\n" + "\n".join(lineas)
             else:
                 msg = "No hay fixtures cargados en este momento."
-            session_store.replace_last_assistant(session_id, msg)
+            session_store.replace_last_assistant(session_id, msg, user_id)
             emit("response", {"type": "chat", "content": msg})
             emit("done", {})
             return
@@ -513,10 +564,12 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         if "ACTION:COMBINADA_AUTO" in respuesta:
             ok, motivo = quota.check_combinada(user_id)
             if not ok:
-                session_store.replace_last_assistant(session_id, motivo)
+                session_store.replace_last_assistant(session_id, motivo, user_id)
                 emit("response", {"type": "chat", "content": motivo})
                 emit("done", {})
                 return
+
+            _consumir_cupo("combinada")
 
             m = re.search(r'ACTION:COMBINADA_AUTO(?:\|([^\n|]+))?', respuesta)
             liga_filtro = m.group(1).strip() if (m and m.group(1)) else ""
@@ -529,7 +582,10 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             texto = engine._formatear_combinada(picks, liga_filtro=liga_filtro, debug_info=debug_info)
             if picks:
                 engine._guardar_picks_combinada(picks, user_id=user_id)
-            session_store.replace_last_assistant(session_id, texto)
+                _cupo_entregado()
+            else:
+                _reembolsar_cupo()   # no se generó combinada → no cobrar cupo
+            session_store.replace_last_assistant(session_id, texto, user_id)
             emit("response", {"type": "combinada", "content": texto, "picks": picks})
             emit("done", {})
             return
@@ -538,15 +594,17 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         if "ACTION:COMBINADA|" in respuesta:
             ok, motivo = quota.check_combinada(user_id)
             if not ok:
-                session_store.replace_last_assistant(session_id, motivo)
+                session_store.replace_last_assistant(session_id, motivo, user_id)
                 emit("response", {"type": "chat", "content": motivo})
                 emit("done", {})
                 return
 
+            _consumir_cupo("combinada")
+
             m = re.search(r'ACTION:COMBINADA\|(.*?)(?:\n|$)', respuesta)
+            partidos_picks = []
             if m:
                 raw = m.group(1).strip()
-                partidos_picks = []
                 for pick_str in raw.split(";"):
                     partes = [p.strip() for p in pick_str.split("|")]
                     if len(partes) >= 4:
@@ -556,26 +614,42 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                                       else [s.strip() for s in stats_raw.split(",")])
                         partidos_picks.append((eq1, eq2, stats_list, liga_n))
 
-                if partidos_picks:
-                    n_total = len(partidos_picks)
-                    status(f"🔄 Analizando combinada ({n_total} partido{'s' if n_total > 1 else ''})...")
-                    picks = engine.hacer_combinada_especifica(partidos_picks)
-                    texto = engine._formatear_combinada(picks)
-                    if picks:
-                        engine._guardar_picks_combinada(picks, user_id=user_id)
-                    session_store.replace_last_assistant(session_id, texto)
-                    emit("response", {"type": "combinada", "content": texto, "picks": picks})
-                    emit("done", {})
-                    return
+            if partidos_picks:
+                n_total = len(partidos_picks)
+                status(f"🔄 Analizando combinada ({n_total} partido{'s' if n_total > 1 else ''})...")
+                picks = engine.hacer_combinada_especifica(partidos_picks)
+                texto = engine._formatear_combinada(picks)
+                if picks:
+                    engine._guardar_picks_combinada(picks, user_id=user_id)
+                    _cupo_entregado()
+                else:
+                    _reembolsar_cupo()
+                session_store.replace_last_assistant(session_id, texto, user_id)
+                emit("response", {"type": "combinada", "content": texto, "picks": picks})
+                emit("done", {})
+                return
+
+            # ACTION:COMBINADA malformada (sin partidos parseables): antes el
+            # flujo seguía de largo con el cupo ya consumido y el texto crudo
+            # de la ACTION terminaba mostrado como chat. Devolver cupo y avisar.
+            _reembolsar_cupo()
+            msg = ("No pude interpretar los partidos de la combinada. "
+                   "Decime el partido y las stats (ej: 'combinada de Boca vs "
+                   "River con corners y goles').")
+            session_store.replace_last_assistant(session_id, msg, user_id)
+            emit("response", {"type": "chat", "content": msg})
+            emit("done", {})
+            return
 
         # ── ACTION:ANALIZAR ───────────────────────────────────────────
         if "ACTION:ANALIZAR|" in respuesta:
             ok, motivo = quota.check_analisis(user_id)
             if not ok:
-                session_store.replace_last_assistant(session_id, motivo)
+                session_store.replace_last_assistant(session_id, motivo, user_id)
                 emit("response", {"type": "chat", "content": motivo})
                 emit("done", {})
                 return
+            _consumir_cupo("analisis")
 
             equipo1 = equipo2 = foco = liga_nombre = None
             match = re.search(r'ACTION:ANALIZAR\|(.*?)\|(.*?)\|(.*?)\|(.*?)(?:\n|$)', respuesta)
@@ -590,6 +664,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 liga_nombre = partes[3].strip() if len(partes) > 3 else ""
 
             if not equipo1 or not equipo2:
+                _reembolsar_cupo()
                 # Bug #0b: antes emitíamos solo `done` y el frontend quedaba
                 # mudo después de "Pensando...". Siempre emitir un mensaje.
                 if not equipo1 and not equipo2:
@@ -599,7 +674,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     eq_dado = equipo1 or equipo2
                     msg = (f"Necesito el rival para analizar a {eq_dado}. "
                            f"Decime contra quién juega.")
-                session_store.replace_last_assistant(session_id, msg)
+                session_store.replace_last_assistant(session_id, msg, user_id)
                 emit("response", {"type": "chat", "content": msg})
                 emit("done", {})
                 return
@@ -696,9 +771,10 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
             _safe_print(f"[fixture-fix] buscando '{equipo1}' vs '{equipo2}' → {fix_data} (par_no_encontrado={par_no_encontrado})")
 
             if par_no_encontrado:
+                _reembolsar_cupo()
                 msg = (f"No encontré {equipo1} vs {equipo2} en los próximos "
                        f"fixtures. Verificá los equipos o pedime un partido distinto.")
-                session_store.replace_last_assistant(session_id, msg)
+                session_store.replace_last_assistant(session_id, msg, user_id)
                 emit("response", {"type": "chat", "content": msg})
                 emit("done", {})
                 return
@@ -711,13 +787,14 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 sufijo = " — partido de hoy" if es_hoy_fix else ""
                 msg_confirm = (f"Dale, analizando {equipo1} (L) vs {equipo2} (V) "
                                f"({liga_nombre}{sufijo}). Un momento...")
-                session_store.replace_last_assistant(session_id, msg_confirm)
+                session_store.replace_last_assistant(session_id, msg_confirm, user_id)
                 emit("response", {"type": "chat", "content": msg_confirm})
             else:
+                _reembolsar_cupo()
                 msg = (f"No encontré a {equipo1} en los próximos partidos de las ligas "
                        f"disponibles. Solo puedo analizar equipos que figuren en los "
                        f"fixtures cargados.")
-                session_store.replace_last_assistant(session_id, msg)
+                session_store.replace_last_assistant(session_id, msg, user_id)
                 emit("response", {"type": "chat", "content": msg})
                 emit("done", {})
                 return
@@ -752,10 +829,11 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
 
             # Guard: si no hay stats reales, no pasarle datos vacíos al LLM
             if "(sin datos suficientes)" in datos:
+                _reembolsar_cupo()
                 msg = (f"Encontré el partido {equipo1} vs {equipo2} en los fixtures, "
                        f"pero SofaScore no tiene estadísticas históricas suficientes "
                        f"para hacer el análisis en este momento.")
-                session_store.replace_last_assistant(session_id, msg)
+                session_store.replace_last_assistant(session_id, msg, user_id)
                 emit("response", {"type": "chat", "content": msg})
                 emit("done", {})
                 return
@@ -812,7 +890,8 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                     f"Analizá {equipo1} vs {equipo2}.\n{ctx_comp}\n{instruccion_foco}"
                 )
 
-            analisis = engine.chat_con_ia_analisis(prompt_analisis, session_id, datos)
+            analisis = engine.chat_con_ia_analisis(prompt_analisis, session_id, datos,
+                                                   user_id=user_id)
             analisis_limpio = re.sub(r'ACTION:ANALIZAR\|[^\n]+', '', analisis).strip()
             analisis_limpio = _limpiar_formato(analisis_limpio)
 
@@ -831,6 +910,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 "content": analisis_limpio,
                 "widgets": _extraer_widget_data(equipo1, equipo2, lineas_py, prom_eq1, prom_eq2),
             })
+            _cupo_entregado()
 
             # ── Extraer stats del análisis para persistir ─────────────
             _prob_mod = _linea_rec = _conf_val = None
@@ -889,7 +969,7 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
                 and not engine._STATS_INVENTADAS.search(respuesta)
             )
             if not es_aclaracion:
-                session_store.replace_last_assistant(session_id, engine._MSG_SIN_DATOS)
+                session_store.replace_last_assistant(session_id, engine._MSG_SIN_DATOS, user_id)
                 emit("response", {"type": "chat", "content": engine._MSG_SIN_DATOS})
                 emit("done", {})
                 return
@@ -898,7 +978,11 @@ def _process(message: str, session_id: str, queue: asyncio.Queue,
         emit("done", {})
 
     except Exception as e:
-        emit("error", {"message": str(e)})
+        # No filtrar detalles internos al cliente (paths, URLs, errores de
+        # libs). El detalle completo queda en el log del servidor.
+        _safe_print(f"[error] _process falló (session={session_id}): {e!r}")
+        _reembolsar_cupo()
+        emit("error", {"message": "Ocurrió un error procesando tu mensaje. Probá de nuevo en un momento."})
         emit("done", {})   # always close the stream so the frontend doesn't hang
 
 
@@ -1104,7 +1188,14 @@ async def chat(request: ChatRequest, http_request: Request):
 
 
 @app.delete("/api/session/{session_id}")
-async def clear_session(session_id: str):
-    """Clear chat history for a session."""
-    session_store.clear_session(session_id)
+async def clear_session(session_id: str, http_request: Request):
+    """Clear chat history for a session. Solo el dueño puede borrarla."""
+    auth_header = http_request.headers.get("Authorization")
+    try:
+        user_id = verificar_token(auth_header)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    if not session_store.clear_session(session_id, user_id):
+        raise HTTPException(status_code=403, detail="La sesión pertenece a otro usuario")
     return {"cleared": session_id}

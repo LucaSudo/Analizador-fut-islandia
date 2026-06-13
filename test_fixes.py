@@ -242,20 +242,41 @@ class TestObtenerPartidosEquipo(unittest.TestCase):
         """
         Cuando _ULTIMOS_DATOS_VIEJOS[equipo] = True, precomputar_stats_equipo
         incluye el aviso de datos viejos en el texto de estadísticas.
+
+        El aviso solo se emite si HAY partidos (con lista vacía la función
+        corta antes con "(sin datos disponibles)"), así que mockeamos un
+        partido sintético y las funciones que tocan red.
         """
         nombre = "_test_equipo_viejo_"
         self.engine._ULTIMOS_DATOS_VIEJOS[nombre.lower()] = True
 
-        # Llamamos precomputar_stats_equipo con lista vacía de partidos
-        # (mockeamos obtener_partidos_equipo)
-        original = self.engine.obtener_partidos_equipo
-        self.engine.obtener_partidos_equipo = lambda *a, **k: []
+        import time as _t
+        partido_fake = {
+            "id": -1,
+            "homeTeam": {"name": nombre},
+            "awayTeam": {"name": "_rival_fake_"},
+            "homeScore": {"current": 1},
+            "awayScore": {"current": 0},
+            "startTimestamp": _t.time() - 200 * 86400,
+            "roundInfo": {"round": 1},
+        }
+
+        orig_partidos = self.engine.obtener_partidos_equipo
+        orig_stats    = self.engine.obtener_estadisticas
+        orig_fuerza   = self.engine._calcular_fuerza_rival_ligera
+        self.engine.obtener_partidos_equipo       = lambda *a, **k: []
+        self.engine.obtener_estadisticas          = lambda *a, **k: {}
+        self.engine._calcular_fuerza_rival_ligera = (
+            lambda *a, **k: {"attack": 1.2, "defense": 1.2})
         try:
             stats_txt, prom = self.engine.precomputar_stats_equipo(
-                None, nombre, 188, 89094, 10
+                None, nombre, 188, 89094, 10,
+                partidos_override=[partido_fake],
             )
         finally:
-            self.engine.obtener_partidos_equipo = original
+            self.engine.obtener_partidos_equipo       = orig_partidos
+            self.engine.obtener_estadisticas          = orig_stats
+            self.engine._calcular_fuerza_rival_ligera = orig_fuerza
             self.engine._ULTIMOS_DATOS_VIEJOS.pop(nombre.lower(), None)
 
         self.assertIn("AVISO", stats_txt,

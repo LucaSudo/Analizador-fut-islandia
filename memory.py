@@ -19,7 +19,7 @@ from supabase_client import db
 # Helpers internos
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _predicciones(user_id: str = None) -> list:
+def _predicciones(user_id: str | None = None) -> list:
     """Trae predicciones ordenadas por fecha. Si user_id se provee, filtra por usuario."""
     try:
         q = db.table("predicciones").select("*").order("created_at")
@@ -32,7 +32,7 @@ def _predicciones(user_id: str = None) -> list:
         return []
 
 
-def _notas_equipos(user_id: str = None) -> dict:
+def _notas_equipos(user_id: str | None = None) -> dict:
     """Trae notas de equipos agrupadas por equipo. Si user_id se provee, filtra por usuario."""
     try:
         q = db.table("notas_equipos").select("*").order("created_at")
@@ -53,7 +53,7 @@ def _notas_equipos(user_id: str = None) -> dict:
 # Compatibilidad legacy: cargar_memoria()
 # ─────────────────────────────────────────────────────────────────────────────
 
-def cargar_memoria(user_id: str = None) -> dict:
+def cargar_memoria(user_id: str | None = None) -> dict:
     """
     Devuelve la estructura legacy {predicciones, notas_equipos, conversaciones_destacadas}
     para código que la usa directamente.
@@ -524,7 +524,7 @@ def verificar_predicciones(sesion):
 # Contexto de memoria para el system prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generar_contexto_memoria(user_id: str = None) -> str:
+def generar_contexto_memoria(user_id: str | None = None) -> str:
     preds = _predicciones(user_id)
     notas = _notas_equipos(user_id)
     contexto = ""
