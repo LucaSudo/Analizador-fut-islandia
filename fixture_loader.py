@@ -63,7 +63,7 @@ LIGAS_CONFIG = {
     # ── Otras ────────────────────────────────────────────────────
     "Saudi Pro League": 955,
     # ── Selecciones (estacionales: solo aparecen cuando hay partidos) ──
-    "Copa Mundial": 58210,
+    "Copa Mundial": 16,
     "Copa América": 133,
     "Eurocopa": 1,
     "Eliminatorias CONMEBOL": 295,
