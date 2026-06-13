@@ -103,7 +103,7 @@ condicionales sueltos.
   - `/datos`: fuente de datos (SofaScore, no afiliado) + disclaimer estadístico.
   - Los archivos viven en `backend/legal/{terminos,privacidad,datos}.html` y se
     sirven con `FileResponse`. Footer links (landing + auth) apuntan a estas rutas
-    (target `_blank`). "Soporte" → `mailto:lucasileoni694@gmail.com`.
+    (target `_blank`). "Soporte" → `mailto:scoutaisupport@gmail.com`.
 - **Upgrade to Elite / Pro**: quedan como "Próximamente". El botón "Upgrade to
   Elite" del sidebar muestra un aviso inline/toast "Plan Pro — próximamente"
   (en la vista de app no existe sección Pricing a la cual scrollear). No promete
