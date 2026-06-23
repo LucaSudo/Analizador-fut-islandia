@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacidad — ScoutAI</title>
+  <meta name="robots" content="noindex" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    body { background:#0e1417; color:#dde3e7; font-family:'Inter',sans-serif; }
+    h1,h2 { font-family:'Sora',sans-serif; }
+    .glass { background:rgba(18,18,20,0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(20px); }
+    a.link { color:#4cd6ff; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="max-w-3xl mx-auto px-6 py-16">
+    <a href="/" class="link text-sm">← Volver a ScoutAI</a>
+    <h1 class="text-3xl font-bold text-[#a4e6ff] mt-6 mb-2">Política de privacidad</h1>
+    <p class="text-sm text-[#bbc9cf] mb-8">Última actualización: junio 2026</p>
+
+    <div class="glass rounded-2xl p-8 space-y-6 leading-relaxed text-[15px]">
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">1. Qué datos guardamos</h2>
+        <ul class="list-disc pl-6 space-y-1">
+          <li><strong>Cuenta:</strong> email y nombre que ingresás al registrarte
+          (gestionado por Supabase, nuestro proveedor de autenticación).</li>
+          <li><strong>Análisis y predicciones:</strong> los partidos que consultás y
+          las recomendaciones generadas, para mostrarte tu historial y métricas.</li>
+          <li><strong>Sesiones de chat:</strong> el historial de la conversación,
+          asociado a tu cuenta, para dar continuidad. Se eliminan automáticamente a
+          las 24 horas de inactividad.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">2. Para qué los usamos</h2>
+        <p>Únicamente para que la herramienta funcione: autenticarte, mostrar tu
+        historial, calcular tu tasa de acierto y aplicar los límites del plan
+        gratuito. No vendemos ni compartimos tus datos con terceros con fines
+        publicitarios.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">3. Terceros</h2>
+        <p>Usamos Supabase (base de datos y autenticación) y Groq (modelo de lenguaje
+        que genera el texto del análisis). Las estadísticas deportivas provienen de
+        fuentes públicas descritas en <a href="/datos" class="link">Datos</a>.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">4. Tus derechos</h2>
+        <p>Podés borrar el historial de una sesión desde Ajustes en la app. Para
+        eliminar tu cuenta y todos tus datos, escribinos a
+        <a href="mailto:scoutaisupport@gmail.com" class="link">scoutaisupport@gmail.com</a>.</p>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

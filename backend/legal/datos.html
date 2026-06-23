@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datos y fuentes — ScoutAI</title>
+  <meta name="robots" content="noindex" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    body { background:#0e1417; color:#dde3e7; font-family:'Inter',sans-serif; }
+    h1,h2 { font-family:'Sora',sans-serif; }
+    .glass { background:rgba(18,18,20,0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(20px); }
+    a.link { color:#4cd6ff; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="max-w-3xl mx-auto px-6 py-16">
+    <a href="/" class="link text-sm">← Volver a ScoutAI</a>
+    <h1 class="text-3xl font-bold text-[#a4e6ff] mt-6 mb-2">Datos y fuentes</h1>
+    <p class="text-sm text-[#bbc9cf] mb-8">Cómo y de dónde sacamos las estadísticas</p>
+
+    <div class="glass rounded-2xl p-8 space-y-6 leading-relaxed text-[15px]">
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">Fuente de datos</h2>
+        <p>Las estadísticas de partidos (corners, goles, tarjetas, remates, faltas,
+        resultados históricos) provienen de datos públicos de
+        <strong>SofaScore</strong>. ScoutAI <strong>no está afiliado</strong> a
+        SofaScore ni cuenta con su respaldo; solo consume información de acceso
+        público con fines de análisis.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">Cómo se calculan las predicciones</h2>
+        <p>Los promedios se ponderan por recencia (los partidos recientes pesan más)
+        y por calidad del rival. Sobre eso se aplican modelos estadísticos
+        (Poisson / Dixon-Coles para resultados, desviación estándar por tipo de
+        estadística para calibrar las líneas y la confianza). El modelo de lenguaje
+        solo redacta el texto: los números los calcula el motor en Python.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-semibold text-white mb-2">Disclaimer estadístico</h2>
+        <p>Ninguna predicción es una certeza. Son estimaciones basadas en datos
+        pasados, que no garantizan el comportamiento futuro. Usá la información como
+        una referencia más, nunca como única base de una decisión económica. Ver los
+        <a href="/terminos" class="link">Términos de uso</a>.</p>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

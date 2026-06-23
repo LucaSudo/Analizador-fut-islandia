@@ -1,6 +1,10 @@
+from dotenv import load_dotenv
 import os
+load_dotenv()
 from groq import Groq
 import json
+
+load_dotenv()
 
 # Cargar partidos
 with open("datos/partidos_islandia_2024.json", "r", encoding="utf-8") as f:
@@ -8,7 +12,7 @@ with open("datos/partidos_islandia_2024.json", "r", encoding="utf-8") as f:
 
 partidos = data["response"]
 
-client = Groq(api_key="os.getenv("GROQ_API_KEY")")
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def get_ultimos_partidos(equipo, n=5):
     resultado = []

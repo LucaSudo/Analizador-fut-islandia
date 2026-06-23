@@ -1,6 +1,14 @@
 __pycache__/
+*.pyc
 dist/
 build/
+.venv/
+venv/
+
+# Secrets
+.env
+
+# Archivos de debug y datos locales
 analisis_final.mp3
 test_voz.wav
 debug_sofascore.txt
@@ -8,7 +16,14 @@ api_responses.json
 ronda7.json
 stats_partido.json
 sofascore_raw.txt
+fixtures_debug.txt
+backend/fixtures_debug.txt
+
+# Archivos de caché local (reemplazados por Supabase)
+memoria.json
+backend/memoria.json
+
+# Binarios del TTS (no se usan en web)
 kokoro-v1.0.onnx
 voices-v1.0.bin
 Analizador Futbol.spec
-.env

@@ -1,0 +1,528 @@
+═══════════════════════════════════════════════════════════════
+  SCOUTAI — MEJORAS PENDIENTES
+  (se completan a medida que avanza el análisis exhaustivo)
+═══════════════════════════════════════════════════════════════
+
+── BUGS CRÍTICOS ACTIVOS ──────────────────────────────────────
+
+[X] 0n. RESUELTO — Predicciones sin evento_id ahora se verifican por matching.
+        FIX (memory.py):
+          1. verificar_predicciones() ahora procesa TODAS las predicciones
+             pendientes (resultado_real=None), con o sin evento_id.
+          2. Nueva función _buscar_evento_por_equipos(sesion, eq1, eq2, fecha):
+             - Consulta /sport/football/scheduled-events/{fecha} en SofaScore
+             - Busca en día exacto ± 1 día (tolerancia de TZ)
+             - Match flexible: nombre guardado puede ser alias parcial
+             - Si hay 1 candidato → usa ese evento_id
+             - Si hay >1 → desambigua por día exacto; si sigue ambiguo, skip
+          3. Nueva función _obtener_stats_evento() extrae el bloque de
+             info+stats que antes estaba inline, ahora reutilizable.
+          4. Cuando encuentra evento_id por lookup → lo persiste en Supabase
+             para que futuras verificaciones sean directas.
+
+        COMPORTAMIENTO:
+          - Combinada AUTO (evento_id=None): busca por equipos+fecha
+            → si el partido terminó y se identifica unívocamente → verifica
+          - Corners_tiempo (evento_id=None): igual
+          - Análisis completo (evento_id real): flujo original inalterado
+          - Si el partido todavía no terminó → skip (próxima vez que se llame)
+          - Si lookup es ambiguo → skip silencioso con warning en log
+
+[X] 0m. RESUELTO — Horas de partidos: TZ unificada en UTC base + offset user.
+        CAUSA RAÍZ: fixture_loader.py usaba datetime.fromtimestamp(ts), que
+        depende del OS del servidor. En tu PC (ARG -3) formateaba como 16:15,
+        en Render (UTC) como 19:15. Inconsistencia entre dev y prod.
+
+        FIX:
+          1. fixture_loader.py: usar datetime.utcfromtimestamp(ts) →
+             fixtures siempre en UTC base.
+          2. engine._SERVER_TZ_AT_LOAD = 0.0 (UTC, ya no depende de env var).
+          3. _retag_fixtures_para_tz aplica delta = user_tz - 0 correctamente.
+          4. engine.py: líneas 583 (histórico) y 1020 (próximo partido)
+             también pasadas a UTC + offset del user.
+          5. inicio_hoy/ahora en engine.py recalculados con datetime.utcnow()
+             en lugar de datetime.now()/date.today() (que dependen del OS).
+          6. Import timezone agregado.
+
+        VERIFICADO: timestamp 1780254900 (Fylkir match):
+          - User ARG (-3) → 16:15 ✓
+          - User Islandia (0) → 19:15 ✓
+          - User CET (+1) → 20:15 ✓
+
+[X] 0l. RESUELTO — Calibración de confianza por σ (variabilidad real).
+        FIX: calcular_lineas_y_confianza() en engine.py ahora usa σ por
+        stat type. Alta = μ - 1σ (no margen fijo).
+
+          _SIGMA_POR_STAT:
+            corners=2.5, goles=1.0, tarjetas_amarillas=1.8,
+            tarjetas_rojas=0.5, remates=2.0, faltas=3.0
+            (+ variantes _1h/_2h con menor varianza)
+
+          Niveles de confianza:
+            Muy alta 🟢: margen ≥ 1.5σ
+            Alta 🟢:    margen ≥ 1.0σ
+            Media 🟡:   margen ≥ 0.5σ
+            Baja 🔴:    margen < 0.5σ
+
+        TESTEO VERIFICADO:
+          Corners 13.0 → Over 10.5 Alta ✓ (ejemplo del user)
+          Corners 8.0  → Over 5.5 Alta
+          Goles 2.8    → Over 1.5 Alta
+          Faltas 22.0  → Over 18.5 Alta
+
+        Recalibración menor de _LINEA_MINIMA_COMBINADA:
+          tarjetas_amarillas 0.5→1.5 (Over 0.5 era trivial)
+          faltas 8.5→10.5 (alineado con σ=3)
+
+        ANTES — SÍNTOMA: Total esperado 13 corners → línea directa Over 12.5.
+        Pero sistema recomienda Over 11.5 con confianza "Alta 🟢".
+        Eso significa: necesitan entrar 12 corners (1 menos del esperado).
+        En la práctica, la variabilidad es alta → muchos partidos caen
+        a 10-11 corners aunque el esperado sea 13.
+
+        CAUSA RAÍZ: La lógica de calcular_lineas_y_confianza() asigna
+        confianzas basadas en distancia del total esperado, pero NO
+        considera margin of error / variabilidad real de datos.
+
+        Ej actual (INCORRECTO):
+          Esperado 13 → Over 12.5 (LD), Over 11.5 (recomendada Alta)
+          Necesita: 12 corners (solo 1 menos del esperado)
+          Confianza: Alta (pero debería ser Media)
+
+        Ej correcto (PROPUESTO):
+          Esperado 13 → Over 12.5 (LD), Over 10.5 (recomendada Alta)
+          Necesita: 11 corners (2+ menos del esperado)
+          Confianza: Alta (respeta variabilidad real)
+
+        IMPACTO: Picks estadísticamente correctos en promedio, pero
+        en la práctica son arriesgados. Usuario pierde si toma picks
+        "Alta confianza" porque la línea es demasiado apretada respecto
+        a variabilidad real del dato.
+
+        SOLUCIÓN TÉCNICA: Modificar calcular_lineas_y_confianza() en engine.py (línea 467)
+
+          Actual: Usa margen_minimo FIJO (default 1.0). Confianzas:
+            - Muy alta 🟢: margen ≥ 2.5 (μ - 2.5)
+            - Alta 🟢:      margen ≥ 1.5 (μ - 1.5)
+            - Media 🟡:     margen ≥ 1.0 (μ - 1.0)
+            - Baja 🔴:      margen < 1.0
+
+          Problema: Para corners=13, genera Over 11.5 (margen=1.5) con
+          confianza Alta. Pero en práctica, variabilidad real es mayor.
+
+          Propuesto: Parámetro "σ_esperada" POR TIPO DE STAT:
+            corners:            σ_esperada = 2.5 (Alta = μ - 5.0 ≈ Over 8)
+            goles:              σ_esperada = 1.5 (Alta = μ - 3.0 ≈ Over 0.5)
+            tarjetas_amarillas: σ_esperada = 1.8 (Alta = μ - 3.6)
+            tarjetas_rojas:     σ_esperada = 0.5 (Alta = μ - 1.0)
+            remates:            σ_esperada = 2.0 (Alta = μ - 4.0)
+            faltas:             σ_esperada = 3.0 (Alta = μ - 6.0)
+
+          Implementación:
+            1. Crear dict _SIGMA_POR_STAT con parámetros por stat
+            2. calcular_lineas_y_confianza recibe stat_type como param
+            3. Usar σ_esperada para calibrar thresholds de confianza
+            4. Test: con corners=13 y σ=2.5 → Over 10.5 ≈ Alta (correcto)
+
+        NOTAS: Parámetros σ_esperada son ESTIMADOS. Validar contra datos
+               reales cuando sea posible. Los picks son "correctos" en
+               promedio, pero confianza debe respetar variabilidad real.
+               Fix aplica a TODAS las stats de forma consistente.
+
+[X] 0o. RESUELTO — SYSTEM_PROMPT ahora se convierte al TZ del user antes de enviarse al LLM.
+        CAUSA RAÍZ REAL: El problema no era solo interfaz.py — el SYSTEM_PROMPT
+        completo se enviaba crudo (UTC) al LLM en todas las llamadas a Groq.
+        El LLM veía horarios UTC y los repetía al user.
+
+        FIX (engine.py):
+          1. Nueva función _system_prompt_con_tz():
+             - Reemplaza el bloque === PRÓXIMOS PARTIDOS === dentro del
+               SYSTEM_PROMPT completo aplicando _retag_fixtures_para_tz()
+             - Retorna SYSTEM_PROMPT con fixtures en el TZ del user actual
+             - O-cost si user_tz == _SERVER_TZ_AT_LOAD (sin conversión)
+          2. Todas las llamadas a Groq usan _system_prompt_con_tz():
+             - chat_con_ia() línea ~2007: system_completo = _system_prompt_con_tz()
+             - chat_con_ia_analisis() línea ~2091: idem
+          3. _obtener_fixtures_texto() (para inyección dinámica) ya usaba
+             _retag_fixtures_para_tz() — sin cambios.
+
+        Antes: LLM veía 19:15 (UTC) → decía "19:15" al user (ARG)
+        Después: LLM ve 16:15 (ARG offset -3) → dice "16:15" al user ✅
+
+[X] 0p. RESUELTO — Búsqueda de historial robusta con doble fallback.
+        FIX (engine.py):
+          1. datetime.now() → datetime.utcnow() en obtener_partidos_equipo()
+             (consistente con #0m, no depende del OS).
+          2. Nueva función _buscar_team_id(sesion, nombre) via /search/teams.
+          3. Nueva función _partidos_via_endpoint_equipo() via /team/{id}/events/last/0:
+             - Filtra por liga_id para mantener contexto correcto
+             - Usado como fallback si búsqueda por rondas da vacío
+          4. Lógica de fallback en obtener_partidos_equipo():
+             - Estrategia 1 (rápida): búsqueda por rondas (ligass grandes)
+             - Si vacío → Estrategia 2: /team/{id}/events (ligas pequeñas/Islandia)
+             - Si sigue vacío → reintentar con ventana de 180 días
+             - Flag _ULTIMOS_DATOS_VIEJOS[nombre] = True si usa ventana expandida
+          5. precomputar_stats_equipo() lee el flag y agrega aviso en el
+             contexto del LLM: "⚠️ AVISO: se están usando datos de hasta
+             180 días atrás. La plantilla y forma pueden haber cambiado."
+
+        ANTES — SÍNTOMA: User pide análisis de "Fylkir" (Islandia) → retorna
+        "SofaScore no tiene estadísticas históricas suficientes"
+        aunque el equipo existe, jugó recientemente y tiene datos.
+
+        CAUSA RAÍZ original (INVESTIGACIÓN EXHAUSTIVA):
+
+        1. PROBLEMA TIMEZONE NO REPARADO (#0m incompleto):
+           obtener_partidos_equipo() línea 420:
+           ```python
+           ahora = datetime.now().timestamp()
+           ```
+           ❌ Usa datetime.now() que depende del OS.
+           ✅ Debería ser datetime.utcnow() (consistente con #0m).
+
+           Impacto: Cálculo de `cutoff` (línea 421) depende de ahora:
+           ```python
+           cutoff = ahora - MAX_DIAS_HISTORIAL * 86400
+           ```
+           Si ahora es incorrecta, cutoff es incorrecta → filtra
+           partidos válidos como "demasiado antiguos".
+
+        2. BÚSQUEDA SILENCIOSA DE PARTIDOS:
+           obtener_partidos_equipo() línea 424-437:
+           - Busca en rondas: desde `rondas_totales + 1` hasta
+             `rondas_totales - ultimas_rondas - 6` (rango de -5 rondas)
+           - Si no encuentra partidos "finished" en ese rango →
+             retorna lista VACÍA
+           - No hay error ni log para indicar "búsqueda falló"
+           - Cadena silenciosa: partidos_vacios → stats_vacios →
+             lineas_ctx_vacios → "sin datos suficientes"
+
+        3. PROBLEMA ESPECÍFICO DE LIGAS ISLANDESAS:
+           - "1. deild karla" (Islandia) es una liga PEQUEÑA
+           - Temporada puede tener formato distinto de ligas grandes
+           - SofaScore puede tener:
+             • Pocas rondas configuradas
+             • Partidos en rondas no-numeradas
+             • Datos con estructura diferente
+           - obtener_partidos_equipo() busca rondas por número
+             → puede no encontrar nada si estructura es diferente
+
+        4. FILTRO CUTOFF PROBLEMÁTICO:
+           MAX_DIAS_HISTORIAL está definido en engine.py.
+           Si MAX_DIAS_HISTORIAL es demasiado pequeño (ej: 30 días),
+           y el equipo no jugó en últimos 30 días (receso) →
+           todos los partidos filtrados → "sin datos".
+
+        IMPACTO:
+          - Usuarios no pueden analizar equipos de ligas "pequeñas"
+            (Islandia, países nórdicos, segunda división, etc.)
+          - Error silencioso: no sabe si es:
+            a) Equipo no existe en SofaScore
+            b) Equipo existe pero no tiene historial
+            c) Historial existe pero está fuera del rango buscado
+            d) Búsqueda en rondas no cubre la estructura real
+          - Muy especialmente:
+            - Temporadas nuevas (receso: cutoff filtra todo)
+            - Ligas con pocas rondas (busca 5 rondas pero hay solo 3)
+            - Cambios en estructura de temporada (formato grupo, etc.)
+
+        SOLUCIONES REQUERIDAS:
+
+        1. FIX INMEDIATO (timezone #0m incompleto):
+           Cambiar línea 420:
+           ```python
+           ahora = datetime.utcnow().timestamp()  # ✅ UTC, consistente
+           ```
+
+        2. FIX ROBUSTO (búsqueda de partidos):
+           a) Expandir rango de búsqueda:
+              - Buscar desde ronda 1 hasta ronda actual + 5
+              - No solo últimas 5 rondas
+           b) Fallback a búsqueda por equipo global:
+              - Si no encuentra en rondas específicas, buscar
+                evento que incluya al equipo en la temporada
+           c) Logging para debugging:
+              - Log cuando no encuentra partidos
+              - Log del rango de rondas buscadas
+              - Log del cutoff aplicado
+
+        3. FIX DIAGNOSTICO (guiar usuario):
+           - Cuando no hay datos, distinguir:
+             • "Equipo no existe en SofaScore"
+             • "Equipo sin historial aún (receso/temporada nueva)"
+             • "Historial más viejo que MAX_DIAS_HISTORIAL"
+           - Usar estado_liga() (#0k) para dar contexto
+
+        NOTAS:
+          - Problema compuesto: timezone #0m + búsqueda limitada
+          - Usuario ve "sin datos" pero datos existen en SofaScore
+          - Similar a #0m: desacoplamiento entre lógica y realidad
+          - Afecta especialmente a:
+            - Equipos de ligas pequeñas
+            - Temporadas nuevas / en receso
+            - Equipos recién subidos de categoría
+
+── BUGS CRÍTICOS ──────────────────────────────────────────────
+
+[X] 0i. RESUELTO — Normalización centralizada de nombres de liga.
+        Fix arquitectónico: el mapeo de aliases vive ahora en engine.py
+        como fuente única (_LIGA_ALIASES + normalizar_liga() +
+        buscar_liga_info() + detectar_liga_en_mensaje()). main.py
+        importa esas funciones en vez de duplicar el mapeo.
+
+        Comportamiento:
+          - "islandia" matchea Besta deild karla + 1. deild karla
+            • Para LISTAR fixtures → muestra ambas divisiones
+            • Para COMBINADA AUTO → toma solo la PRIMERA (Besta deild)
+          - "liga arabe" / "saudita" / "saudi" → Saudi Pro League
+          - "argentina" / "liga argentina" / "afa" → Liga Profesional
+            Argentina (agregada a LIGAS_CONFIG con ID 155)
+          - "segunda islandesa" → 1. deild karla
+          - "francesa" → Ligue 1 + Ligue 2 (multi-match)
+
+        Funciones del engine que ahora usan normalización:
+          - hacer_combinada_auto (filtro)
+          - hacer_analisis_completo (lookup de liga)
+          - hacer_analisis_corners_tiempo (lookup)
+          - _calcular_picks_partido (lookup)
+          - _guardar_picks_combinada (lookup)
+          - main.py guard de combinada (liga_info fallback)
+
+        NOTA: el ID 155 de Liga Profesional Argentina puede no ser el
+        correcto en SofaScore. Si la temporada falla al cargar, la liga
+        se omite silenciosamente y todo lo demás sigue funcionando.
+
+[X] 0e. RESUELTO — Relaunch involuntario de análisis en aclaraciones.
+        Fix: en main.py, post-LLM, si hay análisis previo en la sesión
+        (detectado por '⚽' / 'Total esperado' / 'ACTION:ANALIZAR' en
+        el historial reciente) Y el mensaje del usuario no contiene
+        keywords claros de re-análisis (agregame, sumá, "nuevo análisis",
+        "cuántos goles/corners/tarjetas", combinada, etc.) → se descarta
+        el ACTION:ANALIZAR del LLM y se responde desde el contexto.
+
+[X] 0f. RESUELTO — Filtro de liga en consultas de fixtures.
+        Fix: detección por keywords de liga ("islandia", "premier",
+        "francesa", "saudi", "peruana", etc.) mapeadas a nombres
+        oficiales. "Islandia" devuelve Besta deild + 1. deild. La
+        respuesta directa filtra fixtures por bloque de liga y SOLO
+        lista los partidos pedidos (no agrega Perú ni otras ligas).
+
+[X] 0g. RESUELTO — Marcar local/visitante (junto con UX #1).
+        Fix: "(L)" y "(V)" en header de análisis, lista de fixtures
+        de hoy, respuestas individuales "El próximo partido de X es:",
+        confirmación "Dale, analizando X (L) vs Y (V)..." y contexto
+        del 1x2 que va al LLM (con nombres explícitos + "(local)" /
+        "(visitante)" en vez de "el local"). Helper idempotente.
+
+── UX / PRESENTACIÓN ──────────────────────────────────────────
+
+[X] 1. RESUELTO — junto con #0g (ver arriba).
+
+[X] 2. RESUELTO — Tono servil del LLM.
+       Fix: nueva sección "TONO PROHIBIDO" en el system prompt con
+       lista explícita de frases serviles a evitar ("te puedo decir",
+       "con gusto", "si necesitás algo más no dudes", "espero haber
+       sido de ayuda", etc.) y reglas de "cómo responder en cambio"
+       (directo al grano, sin disculpas, ofrecer ayuda con seguridad).
+
+[X] 3. RESUELTO — Espacio sobrante "(Alta )".
+       Fix: función _limpiar_formato() en main.py aplicada a toda
+       respuesta del LLM antes de enviarla. Normaliza espacios antes
+       de ")" y después de "(".
+
+── COMBINADA AUTO ─────────────────────────────────────────────
+
+[X] 7. RESUELTO — "siempre agarra Perú" era un BUG REAL.
+       La combinada AUTO descartaba TODOS los partidos si existía al
+       menos uno con [HOY]/[EN CURSO]. Como Liga 1 Perú juega de noche
+       (hora ARG), su partido en curso era el único [HOY] → quedaba
+       atrapada analizando solo ese.
+       FIX: si hay <3 partidos de hoy, se completan con los próximos
+       (engine.py hacer_combinada_auto, ~línea 856).
+
+[X] 8. RESUELTO — Combinada no genera picks con equipos de poco historial.
+       Fix: umbrales de _LINEA_MINIMA_COMBINADA bajados una línea (X.5):
+         goles               1.5 → 0.5
+         corners             4.5 → 3.5
+         tarjetas_amarillas  1.5 → 0.5
+         tarjetas_rojas      0.5 → 0.5 (mantenido)
+         remates             3.5 → 2.5
+         faltas             10.5 → 8.5 (baja dos por mayor variabilidad)
+       Equipos de menor historial ahora generan picks en vez de quedar
+       siempre descartados por "línea bajo el umbral".
+
+═══════════════════════════════════════════════════════════════
+  BUGS CRÍTICOS PENDIENTES (encontrados en testing de #0i y #0j)
+═══════════════════════════════════════════════════════════════
+
+[X] 0k. RESUELTO — Estado de liga (receso/no cargada) detectado y comunicado.
+        Fix GLOBAL aplicado a todas las ligas, copas y torneos.
+
+        Implementación:
+          1. engine.estado_liga(nombre_oficial) — nuevo helper con cache
+             (TTL 1h) que consulta SofaScore en vivo:
+               • cargada: ¿está en LIGAS?
+               • tiene_partidos_proximos: ¿hay al menos 1 evento futuro?
+               • proximo_partido: {home, away, fecha_str, dias}
+               • mensaje: texto listo para mostrar al user
+
+          2. hacer_combinada_auto ahora acepta multi-liga separadas por
+             coma. Ej: "Premier League,Besta deild karla". Identifica
+             cuáles ligas pedidas no produjeron partidos → debug_info.
+
+          3. _formatear_combinada usa debug_info.estados_ligas:
+             • Si NO hay picks pero hay ligas pedidas en receso →
+               mensaje específico con próximos partidos de cada una.
+             • Si SÍ hay picks pero ALGUNAS ligas estaban en receso →
+               combinada normal + nota al final explicando qué ligas
+               no tuvieron partidos.
+
+          4. Listado de fixtures en main.py: cuando una/varias ligas
+             filtradas no tienen partidos → muestra estado_liga() de
+             cada una en lugar de "No tengo partidos cargados".
+
+          5. System prompt actualizado: el LLM ahora sabe que
+             ACTION:COMBINADA_AUTO acepta multi-liga separadas por
+             coma. Se le indica explícitamente NO afirmar "en receso"
+             por su cuenta — el sistema lo determina con datos reales.
+
+        Comportamiento ejemplo (Premier + Islandia):
+          Antes: "No hay partidos de Premier League cargados."
+          Ahora: si Islandia tiene partidos:
+                 → combinada de Islandia + nota:
+                   "ℹ️ Otras ligas que pediste no tenían partidos:
+                    • Premier League está en receso..."
+                 si ambas en receso:
+                   "No pude armar combinada:
+                    • Premier League está en receso...
+                    • Besta deild karla está en pausa..."
+
+[X] 0j. RESUELTO — detectar_liga_en_mensaje() ahora soporta multi-liga.
+        Fix: En engine.py, cambiar lógica de "return inmediato" a
+        "acumular en lista". Ahora itera TODO el mensaje e incluye
+        TODOS los aliases encontrados.
+
+        Antes: "Premier e Italia" → ["Premier League"] (ignora Italia)
+        Ahora: "Premier e Italia" → ["Premier League", "Serie A"]
+               "Liga francesa e islandia" → ["Ligue 1", "Ligue 2",
+                                              "Besta deild karla", "1. deild karla"]
+
+        Deduplicación: Si una liga matchea múltiples aliases, aparece
+        una sola vez en el resultado.
+
+        Orden preservado: Alias primero (en orden de especificidad),
+        luego nombres oficiales.
+
+═══════════════════════════════════════════════════════════════
+  BUGS CRÍTICOS PENDIENTES
+═══════════════════════════════════════════════════════════════
+
+[X] 0q. RESUELTO — Combinada AUTO propone partidos que ya se jugaron.
+
+        SÍNTOMA (reportado por usuario):
+          ScoutAI genera una combinada con partidos ya jugados.
+          Al señalarlo, vuelve a generar la MISMA combinada incorrecta.
+
+        CAUSA RAÍZ (doble problema):
+
+        1. _parsear_partidos_fixtures() (engine.py línea 1276) NO filtra
+           por tiempo actual. Lee el SYSTEM_PROMPT cacheado y solo marca
+           prioridad si la línea contiene [HOY] o [EN CURSO]. Nunca compara
+           la fecha/hora del fixture contra datetime.utcnow(). Resultado:
+           un partido que era futuro al arrancar (ej: Valur vs Víkingur
+           01/06 a las 14:00 UTC) aparece como candidato válido aunque
+           ya hayan pasado horas desde que terminó.
+
+        2. SYSTEM_PROMPT es estático desde inicializar(). Una vez cargado
+           al arranque, los fixtures no se refrescan a menos que el backend
+           se reinicie. Si el servidor lleva horas corriendo, los partidos
+           "programados" al inicio ahora son historia — pero el cache no
+           lo sabe.
+
+        3. Cuando el usuario reporta el error, el LLM vuelve a disparar
+           ACTION:COMBINADA_AUTO sin forzar refresh. hacer_combinada_auto()
+           lee el mismo SYSTEM_PROMPT → devuelve los mismos partidos
+           jugados → bucle infinito del error.
+
+        PARTIDOS AFECTADOS EN EL REPORTE:
+          - Valur Reykjavík vs Víkingur Reykjavík (Besta deild karla)
+          - Los Chankas CYC vs Universidad Técnica de Cajamarca (Liga 1 Perú)
+          Ambos ya jugados al momento de la consulta.
+
+        FLUJO DEL BUG (paso a paso):
+          1. Backend arranca → inicializar() carga fixtures de hoy+próximos
+          2. SYSTEM_PROMPT contiene líneas con "(01/06/2026 14:00 [HOY])"
+          3. Horas después, el user pide "armame una combinada"
+          4. hacer_combinada_auto() llama _parsear_partidos_fixtures()
+          5. _parsear_partidos_fixtures() itera SYSTEM_PROMPT: ve [HOY] →
+             marca es_prio=True y lo incluye SIN verificar si 14:00 < ahora
+          6. Se generan picks para partidos terminados → output incorrecto
+          7. User dice "esos partidos ya pasaron"
+          8. LLM dispara ACTION:COMBINADA_AUTO nuevamente
+          9. Mismo SYSTEM_PROMPT cacheado → mismos partidos → mismo error
+
+        SOLUCIÓN REQUERIDA:
+
+        FIX 1 — Filtro temporal en _parsear_partidos_fixtures() (mínimo):
+          Parsear la fecha "(DD/MM/YYYY HH:MM" de cada línea de fixture.
+          Convertir a UTC (revertir offset del user = _SERVER_TZ_AT_LOAD).
+          Si ts_partido < datetime.utcnow() → skip (partido ya pasó).
+
+          Implementación mínima (sin re-fetch):
+          ```python
+          m_fecha = re.search(r'\((\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})', linea)
+          if m_fecha:
+              try:
+                  dt_local = datetime.strptime(
+                      f"{m_fecha.group(1)} {m_fecha.group(2)}", "%d/%m/%Y %H:%M"
+                  )
+                  # El SYSTEM_PROMPT usa TZ del servidor (= UTC, post #0m)
+                  if dt_local < datetime.utcnow():
+                      continue  # partido ya pasó, saltar
+              except ValueError:
+                  pass
+          ```
+
+        FIX 2 — Refresh periódico de SYSTEM_PROMPT (robusto):
+          Guardar timestamp de carga en _FIXTURES_LOADED_AT.
+          Si han pasado más de N minutos (ej: 90 min), llamar
+          inicializar() async antes de responder una combinada.
+          Esto garantiza que los fixtures estén siempre actualizados.
+
+        FIX 3 — Mensaje de error útil cuando no quedan partidos:
+          Si después de filtrar no quedan candidatos válidos para la
+          combinada → no reintentar con los mismos datos, sino informar
+          al user: "No quedan partidos de hoy sin jugar. ¿Querés que
+          busque partidos de mañana?"
+
+        IMPACTO:
+          - Usuario apuesta en partidos que ya se jugaron → pérdida directa
+          - Falla silenciosa: el sistema reporta confianza "Muy alta 🟢"
+            en un partido cuyo resultado ya es conocido
+          - Repetir el error al ser señalado destruye confianza en la tool
+
+        PRIORIDAD: CRÍTICA — afecta directamente las apuestas del usuario.
+
+        FIX APLICADO (engine.py):
+          1. _parsear_partidos_fixtures() (línea 1276): agrega filtro temporal.
+             Para cada fixture, parsea "(DD/MM/YYYY HH:MM" y si
+             dt_partido < datetime.utcnow() → skip.
+             Excepción: [EN CURSO] siempre pasa (partido en juego, no terminado).
+          2. hacer_combinada_auto(): cuando _parsear_partidos_fixtures() devuelve
+             vacío, detecta si SYSTEM_PROMPT tenía fixtures cargados (busca " vs "
+             en el bloque). Si sí → flag todos_jugados=True en debug_info.
+          3. _formatear_combinada(): cuando n_liga==0 y todos_jugados=True →
+             mensaje claro: "Los partidos que tenía cargados ya se jugaron.
+             ¿Querés picks para mañana o de otra liga?" en lugar de mensaje
+             genérico de "no hay fixtures".
+
+═══════════════════════════════════════════════════════════════
+  PENDIENTES CONOCIDOS (de sesiones previas)
+═══════════════════════════════════════════════════════════════
+
+[ ] 4. Email confirmation en Supabase: decidir si dejarlo activado
+       o desactivarlo para facilitar onboarding inicial.
+
+[ ] 5. Pagos / Plan Pro: Stripe o MercadoPago (cuando haya usuarios).
+
+═══════════════════════════════════════════════════════════════
